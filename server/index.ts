@@ -255,6 +255,31 @@ io.on("connection", (socket) => {
     io.to(sessionId).emit("blank_update", { blanked: blankedSessions.has(sessionId) });
   });
 
+  socket.on("media_control", (payload: { id: string; action: "play" | "pause" | "reset" }) => {
+    const { sessionId } = socket.data;
+    if (!sessionId) return;
+    if (controllers.get(sessionId) !== socket.id) return;
+    io.to(sessionId).emit("media_update", { ...payload, seq: Date.now() });
+  });
+
+  socket.on("audio_change", (payload: { muted: boolean; target: "controller" | "both" | "viewers" }) => {
+    const { sessionId } = socket.data;
+    if (!sessionId) return;
+    if (controllers.get(sessionId) !== socket.id) return;
+    io.to(sessionId).emit("audio_update", { ...payload, seq: Date.now() });
+  });
+
+  socket.on("media_time", (payload: { id: string; t: number; playing: boolean; sampledAt: number }) => {
+    const { sessionId } = socket.data;
+    if (!sessionId) return;
+    if (controllers.get(sessionId) !== socket.id) return;
+    socket.to(sessionId).emit("media_time_update", { ...payload, seq: Date.now() });
+  });
+
+  socket.on("time_ping", (clientT1: number, ack?: (data: { serverTime: number; clientT1: number }) => void) => {
+    if (typeof ack === "function") ack({ serverTime: Date.now(), clientT1 });
+  });
+
   socket.on("disconnect", () => {
     const { sessionId } = socket.data;
     if (sessionId && controllers.get(sessionId) === socket.id) {

@@ -18,10 +18,12 @@ import { ThumbnailsCard } from "@/components/controller/ThumbnailsCard";
 import { TimerCard, TimerAction, TimerSettingsDialog } from "@/components/controller/TimerCard";
 import { PresioLogo } from "@/components/PresioLogo";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { ResponsiveGridLayout, useContainerWidth, getCompactor } from "react-grid-layout";
+import { ResponsiveGridLayout, useContainerWidth, getCompactor, type Layout, type ResponsiveLayouts } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import type { PresentationSettings } from "./Presentation";
+import type { MediaState, AudioState } from "@/components/MediaOverlay";
+import type { MediaPlacement } from "@/lib/pdf";
 
 const verticalCompactor = getCompactor("vertical");
 
@@ -163,6 +165,13 @@ interface ControllerViewProps {
   startedAt: number;
   blanked: boolean;
   onBlankToggle: () => void;
+  mediaPlacements: MediaPlacement[];
+  mediaState: MediaState;
+  onMediaControl: (id: string, action: "play" | "pause" | "reset") => void;
+  onMediaTime: (id: string, t: number, playing: boolean, sampledAt: number) => void;
+  muted: boolean;
+  audioState: AudioState;
+  onAudioChange: (next: { muted: boolean; target: AudioState["target"] }) => void;
 }
 
 export function ControllerView({
@@ -178,6 +187,13 @@ export function ControllerView({
   startedAt,
   blanked,
   onBlankToggle,
+  mediaPlacements,
+  mediaState,
+  onMediaControl,
+  onMediaTime,
+  muted,
+  audioState,
+  onAudioChange,
 }: ControllerViewProps) {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -230,8 +246,11 @@ export function ControllerView({
     return () => window.removeEventListener("keydown", handler);
   }, [currentSlide, totalSlides, onGoTo, onBlankToggle, keymap]);
 
-  const onLayoutChange = useCallback((layout: any) => {
-    const arr: CardLayout[] = Array.isArray(layout) ? layout : (layout?.lg ?? layout?.md ?? layout?.sm ?? []);
+  const onLayoutChange = useCallback((layout: Layout, layouts: ResponsiveLayouts) => {
+    const source = layout.length
+      ? layout
+      : (layouts?.lg ?? layouts?.md ?? layouts?.sm ?? layout);
+    const arr: CardLayout[] = source.map((l) => ({ ...l })) as CardLayout[];
     setLayouts(arr);
     localStorage.setItem("presio_controller_layout", JSON.stringify(arr));
   }, []);
@@ -292,7 +311,18 @@ export function ControllerView({
   // Card content + optional action for each key
   const cardContent: Record<string, { content: ReactNode; action?: ReactNode }> = {
     currentSlide: {
-      content: <CurrentSlideCard ref={currentCanvasRef} />,
+      content: (
+        <CurrentSlideCard
+          ref={currentCanvasRef}
+          mediaPlacements={mediaPlacements}
+          mediaState={mediaState}
+          onMediaControl={onMediaControl}
+          onMediaTime={onMediaTime}
+          muted={muted}
+          audioState={audioState}
+          onAudioChange={onAudioChange}
+        />
+      ),
     },
     nextSlide: {
       content: <NextSlideCard pdf={pdf} currentSlide={currentSlide} totalSlides={totalSlides} />,
@@ -428,7 +458,7 @@ export function ControllerView({
 
       <div
         ref={(el) => {
-          // Assign to both refs
+          // eslint-disable-next-line react-hooks/immutability
           (gridContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
           (heightRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}

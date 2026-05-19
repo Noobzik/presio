@@ -55,3 +55,7 @@ The client dev server proxies `/api` and `/socket.io` requests to the server on 
 Presentations automatically expire after 24 hours.
 
 ## TODO
+
+- [ ] Indicator should be yellow when local connected to a local browser window
+- [ ] Users should be able to generate a perma link and qr code that they can put on the presentation.
+- [ ] Add a button to toggle all viewers to show the join code and QR code.

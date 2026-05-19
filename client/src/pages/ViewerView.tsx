@@ -7,6 +7,8 @@ import { SessionQRCode } from "@/components/SessionQRCode";
 import { PresentationTimer } from "@/components/PresentationTimer";
 import { ConnectionIndicator } from "@/components/ConnectionIndicator";
 import type { PresentationSettings } from "./Presentation";
+import { MediaOverlay, type MediaState, type MediaTimeSync } from "@/components/MediaOverlay";
+import type { MediaPlacement } from "@/lib/pdf";
 
 export function ViewerView({
   id,
@@ -15,6 +17,10 @@ export function ViewerView({
   settings,
   startedAt,
   blanked,
+  mediaPlacements,
+  mediaState,
+  mediaTime,
+  muted,
 }: {
   id: string;
   pdfUrl: string;
@@ -22,6 +28,10 @@ export function ViewerView({
   settings: PresentationSettings;
   startedAt: number;
   blanked: boolean;
+  mediaPlacements: MediaPlacement[];
+  mediaState: MediaState;
+  mediaTime: MediaTimeSync | null;
+  muted: boolean;
 }) {
   const navigate = useNavigate();
   const [cursorVisible, setCursorVisible] = useState(true);
@@ -98,7 +108,15 @@ export function ViewerView({
       className="h-screen w-screen bg-black flex items-center justify-center relative"
       style={{ cursor: cursorVisible ? "default" : "none" }}
     >
-      <div ref={canvasRef} className="w-full h-full" />
+      <div ref={canvasRef} className="w-full h-full relative" />
+      <MediaOverlay
+        canvasContainerRef={canvasRef}
+        placements={mediaPlacements}
+        mediaState={mediaState}
+        autostart
+        timeSync={mediaTime}
+        muted={muted}
+      />
 
       {blanked && (
         <div className="absolute inset-0 bg-black z-10 flex items-center justify-center">

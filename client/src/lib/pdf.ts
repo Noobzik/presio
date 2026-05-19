@@ -43,7 +43,9 @@ async function loadNotesFromAttachments(pdf: PDFDocumentProxy): Promise<Map<numb
   const attachments = await pdf.getAttachments();
   console.log("[pdf] attachments:", attachments);
   if (attachments) {
-    for (const [, attachment] of Object.entries<any>(attachments)) {
+    for (const [, attachment] of Object.entries(
+      attachments as Record<string, { filename?: string; content: Uint8Array }>
+    )) {
       const match = (attachment.filename ?? "").match(/^notes-slide-(\d+)\.json$/);
       if (!match) continue;
       try {
@@ -87,6 +89,125 @@ export async function extractSpeakerNotes(
   return extractNotesFromAnnotations(pdf, pageNum, prefix);
 }
 
+export interface MediaPlacement {
+  slide: number;
+  id: string;
+  filename?: string;
+  mime: string;
+  // Position/size as fraction of page (0..1), top-left origin
+  xPct: number;
+  yPct: number;
+  wPct: number;
+  hPct: number;
+  autoplay: boolean;
+  loop: boolean;
+  blobUrl: string;
+}
+
+let mediaCache: Map<number, MediaPlacement[]> | null = null;
+let mediaCachePdf: PDFDocumentProxy | null = null;
+let mediaBlobUrls: string[] = [];
+
+interface MediaMetaJson {
+  slide: number;
+  id: string;
+  filename?: string;
+  url?: string;
+  mime: string;
+  x_pt: number;
+  y_pt: number;
+  w_pt: number;
+  h_pt: number;
+  autoplay: boolean;
+  loop: boolean;
+}
+
+function revokeMediaUrls() {
+  for (const url of mediaBlobUrls) URL.revokeObjectURL(url);
+  mediaBlobUrls = [];
+}
+
+export async function loadMediaPlacements(
+  pdf: PDFDocumentProxy
+): Promise<Map<number, MediaPlacement[]>> {
+  if (mediaCachePdf === pdf && mediaCache) return mediaCache;
+  revokeMediaUrls();
+
+  const attachments = await pdf.getAttachments();
+  const binaries = new Map<string, string>(); // filename -> blob URL
+  const metas: MediaMetaJson[] = [];
+
+  if (attachments) {
+    for (const [, att] of Object.entries(
+      attachments as Record<string, { filename?: string; content: Uint8Array }>
+    )) {
+      const name: string = att.filename ?? "";
+      if (/^media-slide-\d+-.+\.json$/.test(name)) {
+        try {
+          const text = new TextDecoder().decode(att.content);
+          metas.push(JSON.parse(text));
+        } catch { /* skip */ }
+      } else if (/^media-.+\.(gif|mp4|webm)$/i.test(name)) {
+        if (binaries.has(name)) continue;
+        const mime =
+          /\.gif$/i.test(name) ? "image/gif" :
+          /\.mp4$/i.test(name) ? "video/mp4" :
+          /\.webm$/i.test(name) ? "video/webm" : "application/octet-stream";
+        const blob = new Blob([att.content as BlobPart], { type: mime });
+        const url = URL.createObjectURL(blob);
+        mediaBlobUrls.push(url);
+        binaries.set(name, url);
+      }
+    }
+  }
+
+  // Need page dimensions to convert pt -> fractional. All slides share size
+  // in the polylux template (presentation-16-9), but read per-slide to be safe.
+  const pageDimsCache = new Map<number, { w: number; h: number }>();
+  async function getPageDims(n: number) {
+    let dims = pageDimsCache.get(n);
+    if (!dims) {
+      const page = await pdf.getPage(n);
+      const v = page.view; // [x1, y1, x2, y2] in PDF pt
+      dims = { w: v[2] - v[0], h: v[3] - v[1] };
+      pageDimsCache.set(n, dims);
+    }
+    return dims;
+  }
+
+  const map = new Map<number, MediaPlacement[]>();
+  for (const m of metas) {
+    let source: string | undefined;
+    if (m.url) source = m.url;
+    else if (m.filename) source = binaries.get(m.filename);
+    if (!source) continue;
+    const dims = await getPageDims(m.slide);
+    const placement: MediaPlacement = {
+      slide: m.slide,
+      id: m.id,
+      filename: m.filename,
+      mime: m.mime,
+      xPct: m.x_pt / dims.w,
+      yPct: m.y_pt / dims.h,
+      wPct: m.w_pt / dims.w,
+      hPct: m.h_pt / dims.h,
+      autoplay: !!m.autoplay,
+      loop: !!m.loop,
+      blobUrl: source,
+    };
+    const arr = map.get(m.slide) ?? [];
+    arr.push(placement);
+    map.set(m.slide, arr);
+  }
+
+  mediaCache = map;
+  mediaCachePdf = pdf;
+  return map;
+}
+
 export function clearCache() {
   pageCache.clear();
+  revokeMediaUrls();
+  mediaCache = null;
+  mediaCachePdf = null;
 }

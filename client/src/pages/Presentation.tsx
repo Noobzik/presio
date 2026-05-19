@@ -1,8 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useSearchParams, useNavigate, Link } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { loadPdf, renderPage, clearCache } from "@/lib/pdf";
+import { loadPdf, renderPage, clearCache, loadMediaPlacements, type MediaPlacement } from "@/lib/pdf";
+import { defaultAudioState, isMutedForRole, type MediaState, type MediaTimeSync, type AudioState } from "@/components/MediaOverlay";
 import { socket } from "@/lib/socket";
+import { startClockSync } from "@/lib/clock";
 import { getSessionAuth } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +42,10 @@ export default function Presentation() {
   const [settings, setSettings] = useState<PresentationSettings>(defaultSettings);
   const [startedAt] = useState(() => Date.now());
   const [blanked, setBlanked] = useState(false);
+  const [mediaPlacements, setMediaPlacements] = useState<Map<number, MediaPlacement[]>>(new Map());
+  const [mediaState, setMediaState] = useState<MediaState>({ id: null, action: "pause", seq: 0 });
+  const [mediaTime, setMediaTime] = useState<MediaTimeSync | null>(null);
+  const [audioState, setAudioState] = useState<AudioState>(defaultAudioState);
 
   const currentCanvasRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<BroadcastChannel | null>(null);
@@ -55,6 +61,9 @@ export default function Presentation() {
         if (cancelled) return;
         setPdfUrl(session.pdfUrl);
         setPdf(doc);
+        loadMediaPlacements(doc).then((m) => {
+          if (!cancelled) setMediaPlacements(m);
+        }).catch(() => { /* ignore — no media */ });
         setFilename(session.filename);
         setTotalSlides(session.total_slides);
         setCurrentSlide(session.current_slide);
@@ -86,6 +95,7 @@ export default function Presentation() {
   useEffect(() => {
     const { controllerToken } = getSessionAuth(id!);
     socket.connect();
+    startClockSync();
     socket.emit("join_session", { sessionId: id, role: requestedRole, token: controllerToken });
 
     const channel = new BroadcastChannel(`presio-${id}`);
@@ -95,6 +105,8 @@ export default function Presentation() {
       if (type === "slide_update") setCurrentSlide(payload.slideNumber);
       else if (type === "blank_update") setBlanked(payload.blanked);
       else if (type === "settings_update") setSettings(payload);
+      else if (type === "media_update") setMediaState(payload);
+      else if (type === "audio_update") setAudioState(payload);
     };
 
     socket.on("session_state", ({ currentSlide, totalSlides, role: grantedRole, settings: s }) => {
@@ -121,6 +133,18 @@ export default function Presentation() {
       setBlanked(blanked);
     });
 
+    socket.on("media_update", (payload: MediaState) => {
+      setMediaState(payload);
+    });
+
+    socket.on("media_time_update", (payload: MediaTimeSync) => {
+      setMediaTime(payload);
+    });
+
+    socket.on("audio_update", (payload: AudioState) => {
+      setAudioState(payload);
+    });
+
     socket.on("error", ({ message }) => {
       setError(message);
     });
@@ -136,11 +160,19 @@ export default function Presentation() {
       socket.off("slide_update");
       socket.off("settings_update");
       socket.off("blank_update");
+      socket.off("media_update");
+      socket.off("media_time_update");
+      socket.off("audio_update");
       socket.off("error");
       socket.off("session_ended");
       socket.disconnect();
     };
   }, [id, requestedRole, navigate, setSearchParams]);
+
+  useEffect(() => {
+    setMediaState((s) => (s.id === null ? s : { id: null, action: "pause", seq: Date.now() }));
+    setMediaTime(null);
+  }, [currentSlide]);
 
   useEffect(() => {
     if (!pdf || !currentCanvasRef.current) return;
@@ -160,9 +192,41 @@ export default function Presentation() {
       socket.emit("slide_change", { slideNumber: slide });
       channelRef.current?.postMessage({ type: "slide_update", payload: { slideNumber: slide } });
       setCurrentSlide(slide);
+      setMediaState({ id: null, action: "pause", seq: Date.now() });
     },
     [totalSlides]
   );
+
+  const onMediaControl = useCallback(
+    (id: string, action: "play" | "pause" | "reset") => {
+      const next: MediaState = { id, action, seq: Date.now() };
+      socket.emit("media_control", { id, action });
+      channelRef.current?.postMessage({ type: "media_update", payload: next });
+      setMediaState(next);
+    },
+    []
+  );
+
+  const onMediaTime = useCallback(
+    (id: string, t: number, playing: boolean, sampledAt: number) => {
+      socket.emit("media_time", { id, t, playing, sampledAt });
+    },
+    []
+  );
+
+  const onAudioChange = useCallback(
+    (next: { muted: boolean; target: AudioState["target"] }) => {
+      const payload: AudioState = { ...next, seq: Date.now() };
+      socket.emit("audio_change", next);
+      channelRef.current?.postMessage({ type: "audio_update", payload });
+      setAudioState(payload);
+    },
+    []
+  );
+
+  const effectiveMuted = isMutedForRole(role === "controller" ? "controller" : "viewer", audioState);
+
+  const currentMedia = mediaPlacements.get(currentSlide) ?? [];
 
   if (loading) {
     return (
@@ -194,7 +258,20 @@ export default function Presentation() {
   }
 
   if (role === "viewer") {
-    return <ViewerView id={id!} pdfUrl={pdfUrl} canvasRef={currentCanvasRef} settings={settings} startedAt={startedAt} blanked={blanked} />;
+    return (
+      <ViewerView
+        id={id!}
+        pdfUrl={pdfUrl}
+        canvasRef={currentCanvasRef}
+        settings={settings}
+        startedAt={startedAt}
+        blanked={blanked}
+        mediaPlacements={currentMedia}
+        mediaState={mediaState}
+        mediaTime={mediaTime}
+        muted={effectiveMuted}
+      />
+    );
   }
 
   return (
@@ -218,6 +295,13 @@ export default function Presentation() {
         socket.emit("blank_toggle");
         channelRef.current?.postMessage({ type: "blank_update", payload: { blanked: !blanked } });
       }}
+      mediaPlacements={currentMedia}
+      mediaState={mediaState}
+      onMediaControl={onMediaControl}
+      onMediaTime={onMediaTime}
+      muted={effectiveMuted}
+      audioState={audioState}
+      onAudioChange={onAudioChange}
     />
   );
 }
