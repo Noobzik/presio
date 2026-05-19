@@ -116,6 +116,7 @@ export function ViewerView({
         autostart
         timeSync={mediaTime}
         muted={muted}
+        role="viewer"
       />
 
       {blanked && (

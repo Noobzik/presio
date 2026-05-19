@@ -59,7 +59,9 @@ export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
     ref
   ) => {
     const showControls = mediaPlacements.length > 0 && !!onMediaControl && !!mediaState;
-    const hasVideo = mediaPlacements.some((p) => p.mime.startsWith("video/"));
+    const isPlayable = (p: MediaPlacement) =>
+      p.mime.startsWith("video/") || p.kind === "youtube" || p.kind === "vimeo";
+    const hasVideo = mediaPlacements.some(isPlayable);
     const showAudio = showControls && hasVideo && !!audioState && !!onAudioChange;
 
     return (
@@ -73,6 +75,7 @@ export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
               mediaState={mediaState}
               onTimeSync={onMediaTime}
               muted={muted}
+              role="controller"
             />
           )}
         </div>
@@ -82,7 +85,7 @@ export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
               const active = mediaState!.id === p.id;
               const isPlaying = active && mediaState!.action === "play";
               const isPaused = active && mediaState!.action === "pause";
-              const isVideo = p.mime.startsWith("video/");
+              const isVideo = isPlayable(p);
               return (
                 <div
                   key={p.id}

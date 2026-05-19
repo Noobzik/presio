@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { serverNow } from "@/lib/clock";
 import type { MediaPlacement } from "@/lib/pdf";
+import {
+  loadVimeoApi,
+  loadYouTubeApi,
+  type VimeoPlayer,
+  type YTPlayer,
+} from "@/lib/embedPlayers";
+
+export type MediaRole = "controller" | "viewer";
 
 export interface MediaState {
   id: string | null;
@@ -50,6 +58,9 @@ interface Props {
   timeSync?: MediaTimeSync | null;
   /** Whether videos in this overlay should be muted. */
   muted?: boolean;
+  /** Which side this overlay is rendered on. Hides controls for viewers and
+   *  determines who drives play/pause for cross-origin embeds. */
+  role?: MediaRole;
 }
 
 interface Rect {
@@ -87,6 +98,7 @@ export function MediaOverlay({
   onTimeSync,
   timeSync = null,
   muted = true,
+  role = "viewer",
 }: Props) {
   const [rect, setRect] = useState<Rect>({ left: 0, top: 0, width: 0, height: 0 });
 
@@ -129,22 +141,36 @@ export function MediaOverlay({
         height: rect.height,
       }}
     >
-      {placements.map((p) => (
-        <MediaItem
-          key={p.id}
-          placement={p}
-          mediaState={mediaState}
-          autostart={autostart}
-          onTimeSync={onTimeSync}
-          timeSync={timeSync && timeSync.id === p.id ? timeSync : null}
-          muted={muted}
-        />
-      ))}
+      {placements.map((p) => {
+        if (p.kind === "youtube" || p.kind === "vimeo") {
+          return (
+            <EmbedMediaItem
+              key={p.id}
+              placement={p}
+              mediaState={mediaState}
+              autostart={autostart}
+              muted={muted}
+              role={role}
+            />
+          );
+        }
+        return (
+          <NativeMediaItem
+            key={p.id}
+            placement={p}
+            mediaState={mediaState}
+            autostart={autostart}
+            onTimeSync={onTimeSync}
+            timeSync={timeSync && timeSync.id === p.id ? timeSync : null}
+            muted={muted}
+          />
+        );
+      })}
     </div>
   );
 }
 
-function MediaItem({
+function NativeMediaItem({
   placement,
   mediaState,
   autostart,
@@ -334,4 +360,222 @@ function MediaItem({
   const src =
     gifNonce > 0 ? `${placement.blobUrl}#n=${gifNonce}` : placement.blobUrl;
   return <img ref={imgRef} src={src} style={style} alt="" />;
+}
+
+// YouTube / Vimeo embed. Both SDKs are lazy-loaded on first use. The
+// controller drives play/pause/reset via the SDK; viewers see the same
+// iframe with player chrome hidden, mirroring the controller's state.
+function EmbedMediaItem({
+  placement,
+  mediaState,
+  autostart,
+  muted,
+  role,
+}: {
+  placement: MediaPlacement;
+  mediaState: MediaState;
+  autostart: boolean;
+  muted: boolean;
+  role: MediaRole;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const playerRef = useRef<YTPlayer | VimeoPlayer | null>(null);
+  const readyRef = useRef(false);
+
+  const targeted = mediaState.id === placement.id;
+  const showControls = role === "controller";
+  const src = buildEmbedSrc(placement, showControls);
+
+  // Latest input snapshot for use from the SDK's async ready callback —
+  // avoids stale closures without forcing extra renders. Updated in an
+  // effect (before the apply effect below) so React's strict ref-write
+  // rule is respected.
+  const inputsRef = useRef({
+    kind: placement.kind,
+    autoplay: placement.autoplay,
+    mediaState,
+    targeted,
+    autostart,
+    muted,
+  });
+  useEffect(() => {
+    inputsRef.current = {
+      kind: placement.kind,
+      autoplay: placement.autoplay,
+      mediaState,
+      targeted,
+      autostart,
+      muted,
+    };
+  });
+
+  const applyState = () => {
+    const p = playerRef.current;
+    const s = inputsRef.current;
+    if (!p || !readyRef.current) return;
+    if (s.kind !== "youtube" && s.kind !== "vimeo") return;
+    setPlayerMuted(p, s.kind, s.muted);
+    if (s.autostart && s.autoplay && s.mediaState.id === null) {
+      playPlayer(p, s.kind);
+      return;
+    }
+    if (!s.targeted) return;
+    if (s.mediaState.action === "play") playPlayer(p, s.kind);
+    else if (s.mediaState.action === "pause") pausePlayer(p, s.kind);
+    else if (s.mediaState.action === "reset") seekPlayer(p, s.kind, 0);
+  };
+
+  // Lazy-load the SDK and attach a player to the iframe. Re-runs if the
+  // iframe `src` changes (e.g. role flip), fully tearing down the previous
+  // player so SDKs always bind to the live <iframe>.
+  useEffect(() => {
+    const el = iframeRef.current;
+    if (!el || !placement.videoId) return;
+    let cancelled = false;
+    readyRef.current = false;
+
+    (async () => {
+      try {
+        if (placement.kind === "youtube") {
+          const YT = await loadYouTubeApi();
+          if (cancelled) return;
+          const p = new YT.Player(el, {
+            events: {
+              onReady: () => {
+                if (cancelled) return;
+                readyRef.current = true;
+                applyState();
+              },
+            },
+          });
+          playerRef.current = p;
+        } else {
+          const Ctor = await loadVimeoApi();
+          if (cancelled) return;
+          const p = new Ctor(el);
+          playerRef.current = p;
+          p.ready()
+            .then(() => {
+              if (cancelled) return;
+              readyRef.current = true;
+              applyState();
+            })
+            .catch(() => {});
+        }
+      } catch {
+        // SDK load failed; the bare iframe still renders with its URL-param
+        // playback options as a degraded fallback.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      const p = playerRef.current;
+      playerRef.current = null;
+      readyRef.current = false;
+      try {
+        (p as { destroy?: () => unknown } | null)?.destroy?.();
+      } catch { /* ignore */ }
+    };
+    // applyState reads inputsRef each call, so it is stable for these deps.
+  }, [placement.kind, placement.videoId, src]);
+
+  // Re-apply playback state whenever the controller's mediaState, mute, or
+  // autostart inputs change.
+  useEffect(() => {
+    applyState();
+    // applyState pulls from inputsRef (kept in sync above on every render),
+    // so this effect's deps just need to fire on actual input changes.
+  }, [mediaState, targeted, autostart, muted, placement.kind, placement.autoplay]);
+
+  const style: React.CSSProperties = {
+    position: "absolute",
+    left: `${placement.xPct * 100}%`,
+    top: `${placement.yPct * 100}%`,
+    width: `${placement.wPct * 100}%`,
+    height: `${placement.hPct * 100}%`,
+    border: 0,
+    pointerEvents: role === "controller" ? "auto" : "none",
+  };
+
+  if (!placement.videoId) return null;
+
+  return (
+    <iframe
+      ref={iframeRef}
+      src={src}
+      style={style}
+      allow={
+        placement.kind === "youtube"
+          ? "autoplay; encrypted-media; picture-in-picture"
+          : "autoplay; fullscreen; picture-in-picture"
+      }
+      allowFullScreen
+      title={placement.kind === "youtube" ? "YouTube video" : "Vimeo video"}
+    />
+  );
+}
+
+function buildEmbedSrc(p: MediaPlacement, showControls: boolean): string {
+  if (p.kind === "youtube" && p.videoId) {
+    const q = new URLSearchParams();
+    q.set("enablejsapi", "1");
+    q.set("rel", "0");
+    q.set("modestbranding", "1");
+    q.set("playsinline", "1");
+    q.set("controls", showControls ? "1" : "0");
+    // Disable the keyboard, fullscreen button, and end-card overlays for
+    // viewers so nothing surfaces UI we don't control.
+    if (!showControls) {
+      q.set("disablekb", "1");
+      q.set("fs", "0");
+      q.set("iv_load_policy", "3");
+    }
+    if (p.loop) {
+      q.set("loop", "1");
+      q.set("playlist", p.videoId);
+    }
+    if (typeof window !== "undefined") q.set("origin", window.location.origin);
+    return `https://www.youtube-nocookie.com/embed/${p.videoId}?${q}`;
+  }
+  if (p.kind === "vimeo" && p.videoId) {
+    const q = new URLSearchParams();
+    q.set("dnt", "1");
+    q.set("controls", showControls ? "true" : "false");
+    if (p.loop) q.set("loop", "1");
+    return `https://player.vimeo.com/video/${p.videoId}?${q}`;
+  }
+  return "";
+}
+
+function isYT(kind: "youtube" | "vimeo"): kind is "youtube" {
+  return kind === "youtube";
+}
+
+function playPlayer(player: YTPlayer | VimeoPlayer, kind: "youtube" | "vimeo") {
+  if (isYT(kind)) (player as YTPlayer).playVideo();
+  else (player as VimeoPlayer).play().catch(() => {});
+}
+
+function pausePlayer(player: YTPlayer | VimeoPlayer, kind: "youtube" | "vimeo") {
+  if (isYT(kind)) (player as YTPlayer).pauseVideo();
+  else (player as VimeoPlayer).pause().catch(() => {});
+}
+
+function seekPlayer(player: YTPlayer | VimeoPlayer, kind: "youtube" | "vimeo", t: number) {
+  if (isYT(kind)) (player as YTPlayer).seekTo(t, true);
+  else (player as VimeoPlayer).setCurrentTime(t).catch(() => {});
+}
+
+function setPlayerMuted(
+  player: YTPlayer | VimeoPlayer,
+  kind: "youtube" | "vimeo",
+  muted: boolean
+) {
+  if (kind === "youtube") {
+    if (muted) (player as YTPlayer).mute();
+    else (player as YTPlayer).unMute();
+  } else {
+    (player as VimeoPlayer).setMuted(muted).catch(() => {});
+  }
 }

@@ -54,8 +54,15 @@ The client dev server proxies `/api` and `/socket.io` requests to the server on 
 
 Presentations automatically expire after 24 hours.
 
+## Thoughts
+
+- [ ] To make it scalable ideally for free users if you don't sign up you can only host presentations locally. Presentations are then not synced online but just stored locally in the controller window. When a user logs in they can use it across devices and the presentation is synced online.
+- [ ]
+
 ## TODO
 
 - [ ] Indicator should be yellow when local connected to a local browser window
 - [ ] Users should be able to generate a perma link and qr code that they can put on the presentation.
 - [ ] Add a button to toggle all viewers to show the join code and QR code.
+- [ ] In addition to blanking the screen it should also be possible to show the join code.
+- [ ]

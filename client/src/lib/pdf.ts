@@ -1,5 +1,6 @@
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.mjs?url";
+import { typstAstToMarkdown } from "./typstNotes";
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -52,7 +53,18 @@ async function loadNotesFromAttachments(pdf: PDFDocumentProxy): Promise<Map<numb
         const text = new TextDecoder().decode(attachment.content);
         const data = JSON.parse(text);
         const slideNum = parseInt(match[1], 10);
-        map.set(slideNum, typeof data.notes === "string" ? data.notes : JSON.stringify(data.notes));
+        let rendered: string;
+        if (typeof data.notes === "string") {
+          rendered = data.notes;
+        } else if (Array.isArray(data.notes)) {
+          rendered = data.notes
+            .map((n: unknown) => typstAstToMarkdown(n))
+            .filter((s: string) => s.length > 0)
+            .join("\n\n---\n\n");
+        } else {
+          rendered = typstAstToMarkdown(data.notes);
+        }
+        map.set(slideNum, rendered);
       } catch { /* skip malformed */ }
     }
   }
@@ -89,9 +101,12 @@ export async function extractSpeakerNotes(
   return extractNotesFromAnnotations(pdf, pageNum, prefix);
 }
 
+export type MediaKind = "file" | "url" | "youtube" | "vimeo";
+
 export interface MediaPlacement {
   slide: number;
   id: string;
+  kind: MediaKind;
   filename?: string;
   mime: string;
   // Position/size as fraction of page (0..1), top-left origin
@@ -101,7 +116,10 @@ export interface MediaPlacement {
   hPct: number;
   autoplay: boolean;
   loop: boolean;
+  // For file/url kinds: blob URL (file) or remote URL. For youtube/vimeo:
+  // the canonical embed URL — see MediaOverlay for player construction.
   blobUrl: string;
+  videoId?: string;
 }
 
 let mediaCache: Map<number, MediaPlacement[]> | null = null;
@@ -111,8 +129,10 @@ let mediaBlobUrls: string[] = [];
 interface MediaMetaJson {
   slide: number;
   id: string;
+  kind?: MediaKind;
   filename?: string;
   url?: string;
+  video_id?: string;
   mime: string;
   x_pt: number;
   y_pt: number;
@@ -177,14 +197,20 @@ export async function loadMediaPlacements(
 
   const map = new Map<number, MediaPlacement[]>();
   for (const m of metas) {
+    const kind: MediaKind =
+      m.kind ?? (m.url ? "url" : "file");
     let source: string | undefined;
-    if (m.url) source = m.url;
-    else if (m.filename) source = binaries.get(m.filename);
+    if (kind === "youtube" || kind === "vimeo" || kind === "url") {
+      source = m.url;
+    } else if (m.filename) {
+      source = binaries.get(m.filename);
+    }
     if (!source) continue;
     const dims = await getPageDims(m.slide);
     const placement: MediaPlacement = {
       slide: m.slide,
       id: m.id,
+      kind,
       filename: m.filename,
       mime: m.mime,
       xPct: m.x_pt / dims.w,
@@ -194,6 +220,7 @@ export async function loadMediaPlacements(
       autoplay: !!m.autoplay,
       loop: !!m.loop,
       blobUrl: source,
+      videoId: m.video_id,
     };
     const arr = map.get(m.slide) ?? [];
     arr.push(placement);
