@@ -9,9 +9,12 @@ import { ConnectionIndicator } from "@/components/ConnectionIndicator";
 import type { PresentationSettings } from "./Presentation";
 import { MediaOverlay, type MediaState, type MediaTimeSync } from "@/components/MediaOverlay";
 import type { MediaPlacement } from "@/lib/pdf";
+import type { PDFDocumentProxy } from "pdfjs-dist";
+import { DownloadStrippedButton } from "@/components/DownloadStrippedButton";
 
 export function ViewerView({
   id,
+  pdf,
   pdfUrl,
   canvasRef,
   settings,
@@ -23,6 +26,7 @@ export function ViewerView({
   muted,
 }: {
   id: string;
+  pdf: PDFDocumentProxy;
   pdfUrl: string;
   canvasRef: React.RefObject<HTMLDivElement | null>;
   settings: PresentationSettings;
@@ -191,6 +195,7 @@ export function ViewerView({
                 </a>
               </Button>
             )}
+            <DownloadStrippedButton pdf={pdf} pdfUrl={pdfUrl} variant="outline" size="default" block />
             <Button
               className="w-full"
               variant="outline"

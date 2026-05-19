@@ -24,6 +24,7 @@ import "react-resizable/css/styles.css";
 import type { PresentationSettings } from "./Presentation";
 import type { MediaState, AudioState } from "@/components/MediaOverlay";
 import type { MediaPlacement } from "@/lib/pdf";
+import { DownloadStrippedButton } from "@/components/DownloadStrippedButton";
 
 const verticalCompactor = getCompactor("vertical");
 
@@ -513,6 +514,7 @@ export function ControllerView({
               </a>
             </Button>
           )}
+          <DownloadStrippedButton pdf={pdf} pdfUrl={pdfUrl} />
           <Button variant="destructive" size="sm" onClick={() => setConfirmEnd(true)}>
             End Presentation
           </Button>
@@ -631,7 +633,7 @@ function MobileLayout({
           <span className="font-mono font-bold tracking-widest text-sm select-all">{id}</span>
           <ConnectionIndicator />
         </div>
-        <MobileControllerMenu id={id} pdfUrl={pdfUrl} passphrase={passphrase} />
+        <MobileControllerMenu id={id} pdf={pdf} pdfUrl={pdfUrl} passphrase={passphrase} />
       </div>
 
       <div className="flex-1 flex flex-col gap-2 p-3 min-h-0">

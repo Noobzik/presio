@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
 import { SessionQRCode } from "@/components/SessionQRCode";
 import { CopyField } from "@/components/CopyField";
+import { DownloadStrippedButton } from "@/components/DownloadStrippedButton";
 
 function MenuIcon() {
   return (
@@ -18,10 +20,12 @@ function MenuIcon() {
 
 export function MobileControllerMenu({
   id,
+  pdf,
   pdfUrl,
   passphrase,
 }: {
   id: string;
+  pdf: PDFDocumentProxy;
   pdfUrl: string;
   passphrase: string | null;
 }) {
@@ -71,6 +75,7 @@ export function MobileControllerMenu({
                   <a href={pdfUrl} download>Download PDF</a>
                 </Button>
               )}
+              <DownloadStrippedButton pdf={pdf} pdfUrl={pdfUrl} block />
               <div className="flex items-center justify-between px-4 py-2">
                 <span className="text-sm">Theme</span>
                 <ThemeToggle size="icon" />

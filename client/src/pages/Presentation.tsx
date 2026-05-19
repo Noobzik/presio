@@ -261,6 +261,7 @@ export default function Presentation() {
     return (
       <ViewerView
         id={id!}
+        pdf={pdf!}
         pdfUrl={pdfUrl}
         canvasRef={currentCanvasRef}
         settings={settings}

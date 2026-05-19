@@ -4,7 +4,9 @@ import type { MediaPlacement } from "@/lib/pdf";
 import {
   loadVimeoApi,
   loadYouTubeApi,
+  YT_STATE,
   type VimeoPlayer,
+  type VimeoTimeData,
   type YTPlayer,
 } from "@/lib/embedPlayers";
 
@@ -151,6 +153,8 @@ export function MediaOverlay({
               autostart={autostart}
               muted={muted}
               role={role}
+              onTimeSync={onTimeSync}
+              timeSync={timeSync && timeSync.id === p.id ? timeSync : null}
             />
           );
         }
@@ -371,12 +375,16 @@ function EmbedMediaItem({
   autostart,
   muted,
   role,
+  onTimeSync,
+  timeSync,
 }: {
   placement: MediaPlacement;
   mediaState: MediaState;
   autostart: boolean;
   muted: boolean;
   role: MediaRole;
+  onTimeSync?: (id: string, t: number, playing: boolean, sampledAt: number) => void;
+  timeSync: MediaTimeSync | null;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const playerRef = useRef<YTPlayer | VimeoPlayer | null>(null);
@@ -392,22 +400,46 @@ function EmbedMediaItem({
   // rule is respected.
   const inputsRef = useRef({
     kind: placement.kind,
+    id: placement.id,
     autoplay: placement.autoplay,
     mediaState,
     targeted,
     autostart,
     muted,
+    role,
+    onTimeSync,
   });
   useEffect(() => {
     inputsRef.current = {
       kind: placement.kind,
+      id: placement.id,
       autoplay: placement.autoplay,
       mediaState,
       targeted,
       autostart,
       muted,
+      role,
+      onTimeSync,
     };
   });
+
+  // Latest Vimeo time/play state, fed by Vimeo's promise-based event API so
+  // the controller's 250ms tick can read it synchronously.
+  const vimeoSampleRef = useRef<{ t: number; playing: boolean }>({ t: 0, playing: false });
+
+  const emitTimeSync = () => {
+    const p = playerRef.current;
+    const s = inputsRef.current;
+    if (!p || !readyRef.current || s.role !== "controller" || !s.onTimeSync) return;
+    if (s.kind === "youtube") {
+      const yp = p as YTPlayer;
+      const playing = yp.getPlayerState() === YT_STATE.PLAYING;
+      s.onTimeSync(s.id, yp.getCurrentTime(), playing, serverNow());
+    } else if (s.kind === "vimeo") {
+      const { t, playing } = vimeoSampleRef.current;
+      s.onTimeSync(s.id, t, playing, serverNow());
+    }
+  };
 
   const applyState = () => {
     const p = playerRef.current;
@@ -445,6 +477,14 @@ function EmbedMediaItem({
                 if (cancelled) return;
                 readyRef.current = true;
                 applyState();
+                emitTimeSync();
+              },
+              // Fires on play / pause / seek (YT issues PAUSED → PLAYING
+              // around a seek). Emit immediately so viewers don't wait for
+              // the next 250ms tick.
+              onStateChange: () => {
+                if (!readyRef.current) return;
+                emitTimeSync();
               },
             },
           });
@@ -454,11 +494,39 @@ function EmbedMediaItem({
           if (cancelled) return;
           const p = new Ctor(el);
           playerRef.current = p;
+          // Vimeo's APIs are promise-based — keep a synchronous cache of
+          // (t, playing) so the controller's tick emits without awaiting.
+          const onTimeUpdate = (data?: VimeoTimeData) => {
+            vimeoSampleRef.current = {
+              t: data?.seconds ?? vimeoSampleRef.current.t,
+              playing: vimeoSampleRef.current.playing,
+            };
+          };
+          const onPlay = (data?: VimeoTimeData) => {
+            vimeoSampleRef.current = { t: data?.seconds ?? vimeoSampleRef.current.t, playing: true };
+            emitTimeSync();
+          };
+          const onPause = (data?: VimeoTimeData) => {
+            vimeoSampleRef.current = { t: data?.seconds ?? vimeoSampleRef.current.t, playing: false };
+            emitTimeSync();
+          };
+          const onSeeked = (data?: VimeoTimeData) => {
+            vimeoSampleRef.current = {
+              t: data?.seconds ?? vimeoSampleRef.current.t,
+              playing: vimeoSampleRef.current.playing,
+            };
+            emitTimeSync();
+          };
+          p.on("timeupdate", onTimeUpdate);
+          p.on("play", onPlay);
+          p.on("pause", onPause);
+          p.on("seeked", onSeeked);
           p.ready()
             .then(() => {
               if (cancelled) return;
               readyRef.current = true;
               applyState();
+              emitTimeSync();
             })
             .catch(() => {});
         }
@@ -487,6 +555,48 @@ function EmbedMediaItem({
     // applyState pulls from inputsRef (kept in sync above on every render),
     // so this effect's deps just need to fire on actual input changes.
   }, [mediaState, targeted, autostart, muted, placement.kind, placement.autoplay]);
+
+  // Controller: periodically emit current playback time + sample timestamp,
+  // mirroring the native <video> path. Seek/play/pause via the iframe's own
+  // chrome lands here on the next tick (plus an instant emit on each state
+  // change in the SDK callbacks above).
+  useEffect(() => {
+    if (role !== "controller" || !onTimeSync) return;
+    const interval = setInterval(() => {
+      if (readyRef.current) emitTimeSync();
+    }, 250);
+    return () => clearInterval(interval);
+    // emitTimeSync reads inputsRef and playerRef.
+  }, [role, onTimeSync, placement.id]);
+
+  // Viewer: apply incoming time sync. Match play/pause to the controller's
+  // current state and seek when drift exceeds HARD; YT/Vimeo embeds don't
+  // expose continuous playback-rate trimming the way <video> does, so we
+  // rely on coarse re-seeks instead of the EWMA-smoothed rate adjustment.
+  useEffect(() => {
+    if (role !== "viewer" || !timeSync) return;
+    const p = playerRef.current;
+    if (!p || !readyRef.current) return;
+    if (placement.kind !== "youtube" && placement.kind !== "vimeo") return;
+
+    const latencyS = Math.max(0, (serverNow() - timeSync.sampledAt) / 1000);
+    const expectedT = timeSync.playing ? timeSync.t + latencyS : timeSync.t;
+    const HARD = 1.5;
+
+    if (timeSync.playing) playPlayer(p, placement.kind);
+    else pausePlayer(p, placement.kind);
+
+    if (placement.kind === "youtube") {
+      const drift = (p as YTPlayer).getCurrentTime() - expectedT;
+      if (Math.abs(drift) > HARD) (p as YTPlayer).seekTo(Math.max(0, expectedT), true);
+    } else {
+      (p as VimeoPlayer).getCurrentTime().then((current) => {
+        if (Math.abs(current - expectedT) > HARD) {
+          (p as VimeoPlayer).setCurrentTime(Math.max(0, expectedT)).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+  }, [timeSync, role, placement.kind]);
 
   const style: React.CSSProperties = {
     position: "absolute",
