@@ -611,6 +611,19 @@ export function ControllerView({
             </div>
           </section>
 
+          {passphrase && (
+            <>
+              <Separator />
+              <section className="space-y-2">
+                <h3 className="text-sm font-medium">Controller Passphrase</h3>
+                <p className="text-xs text-muted-foreground">
+                  Share this passphrase to grant controller access
+                </p>
+                <CopyField label="" value={passphrase} />
+              </section>
+            </>
+          )}
+
           <Separator />
 
           <section className="space-y-2">

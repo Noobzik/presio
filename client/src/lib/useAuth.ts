@@ -13,17 +13,6 @@ export interface AuthContextValue {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Cached session for synchronous callers (e.g. the upload branch in Home).
-let cachedSession: Session | null = null;
-
-export function setCachedSession(s: Session | null): void {
-  cachedSession = s;
-}
-
-export function isLoggedIn(): boolean {
-  return cachedSession !== null;
-}
-
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within an AuthProvider");

@@ -72,7 +72,9 @@ export default function Presentation() {
       try {
         // If the PDF is in this browser's IndexedDB, it's a local session —
         // render it without the server (works offline, independent of the row).
-        const rec = await idbGet(id!);
+        const rec = await idbGet(id!).catch(() => {
+          throw new Error("Couldn't read the presentation from this browser. Private/incognito mode isn't supported — please use a normal window.");
+        });
         if (rec) {
           if (cancelled) return;
           setLocal(true);

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
-import { AuthContext, setCachedSession, type AuthContextValue } from "@/lib/useAuth";
+import { AuthContext, type AuthContextValue } from "@/lib/useAuth";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -9,12 +9,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setCachedSession(data.session);
       setSession(data.session);
       setLoading(false);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setCachedSession(s);
       setSession(s);
     });
     return () => sub.subscription.unsubscribe();

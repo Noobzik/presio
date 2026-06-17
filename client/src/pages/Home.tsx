@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PresioLogo } from "@/components/PresioLogo";
-import { isLoggedIn } from "@/lib/useAuth";
 import { idbPut, idbList, idbDelete, idbPruneOlderThan } from "@/lib/localStore";
 import "@/lib/pdf"; // ensure pdf.js worker is configured
 
@@ -75,44 +74,27 @@ export default function Home() {
     setUploading(true);
     setProgress(0);
     try {
-      if (!isLoggedIn()) {
-        // Local mode: keep the PDF in the browser, never upload it. We still
-        // reserve a session code on the server (marked local) so it is unique.
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        setProgress(100);
-        const doc = await getDocument({ data: bytes }).promise;
-        const totalSlides = doc.numPages;
-        doc.destroy();
-        const filename = file.name.replace(/\.pdf$/i, "");
-        const res = await fetch("/api/sessions/local", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filename, total_slides: totalSlides }),
-        });
-        if (!res.ok) throw new Error("Failed to create session");
-        const { id } = await res.json();
-        await idbPut({ id, filename, totalSlides, blob: file, createdAt: Date.now() });
-        navigate(`/s/${id}/share`);
-        return;
-      }
-
-      const form = new FormData();
-      form.append("pdf", file);
-      const { id, controllerToken, passphrase } = await new Promise<{ id: string; controllerToken: string; passphrase: string }>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/sessions");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-          const body = JSON.parse(xhr.responseText);
-          if (xhr.status >= 200 && xhr.status < 300) resolve(body);
-          else reject(new Error(body.error || "Upload failed"));
-        };
-        xhr.onerror = () => reject(new Error("Upload failed"));
-        xhr.send(form);
+      // Everyone defaults to local: keep the PDF in the browser, never upload it.
+      // We reserve a session code on the server (marked local) so it is unique.
+      // Logged-in users can opt into syncing later from the share screen.
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      setProgress(100);
+      const doc = await getDocument({ data: bytes }).promise;
+      const totalSlides = doc.numPages;
+      doc.destroy();
+      const filename = file.name.replace(/\.pdf$/i, "");
+      const res = await fetch("/api/sessions/local", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, total_slides: totalSlides }),
       });
-      localStorage.setItem(`session_${id}`, JSON.stringify({ controllerToken, passphrase }));
+      if (!res.ok) throw new Error("Failed to create session");
+      const { id } = await res.json();
+      try {
+        await idbPut({ id, filename, totalSlides, blob: file, createdAt: Date.now() });
+      } catch {
+        throw new Error("Couldn't store the presentation in this browser. Private/incognito mode isn't supported — please use a normal window.");
+      }
       navigate(`/s/${id}/share`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
