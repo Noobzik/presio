@@ -10,7 +10,11 @@ Upload a PDF presentation, get a short link, and control the slideshow from one 
 ## Supabase Setup
 
 1. Create a new Supabase project
-2. Run the SQL in `supabase-schema.sql` in the Supabase SQL editor to create the `sessions` table and `presentations` storage bucket
+2. Run the SQL in `dbschema.sql` in the Supabase SQL editor to create the `sessions` table and `presentations` storage bucket
+3. **Auth** (for logging in / sharing presentations online):
+   - Email/password is enabled by default (optionally disable email confirmation for local dev under Auth → Providers → Email).
+   - GitHub: create a GitHub OAuth App with callback `https://<your-project>.supabase.co/auth/v1/callback`, then add its client id/secret under Auth → Providers → GitHub.
+   - Under Auth → URL Configuration, add your app origins to **Redirect URLs** (e.g. `http://localhost:5173/**` and your production origin) so the OAuth round-trip can return to the share screen.
 
 ## Environment Variables
 
@@ -26,7 +30,7 @@ PORT=3001
 
 ```
 VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your-publishable-key
 ```
 
 ## Running Locally
@@ -56,20 +60,23 @@ Presentations automatically expire after 24 hours.
 
 ## Modes
 
-- **Logged out (default):** the PDF never leaves your browser. It's stored in
+- **Local (default):** the PDF never leaves your browser. It's stored in
   IndexedDB and shared across tabs/windows on the same device via
-  `BroadcastChannel` — no upload, no server session. Opening a presentation
-  auto-opens a viewer window. Local presentations can't be joined from another
-  device. They auto-expire after 7 days (or on "End Presentation").
-- **Logged in:** the existing server-synced flow — the PDF is uploaded to Supabase
-  and viewers can join from any device by code/QR. (Auth is currently a placeholder
-  toggle on the home screen.)
+  `BroadcastChannel` — no upload. A session code is reserved on the server (marked
+  `local`) but no PDF is stored. Opening a presentation auto-opens a viewer window.
+  Local presentations can't be joined from another device. They auto-expire after 7
+  days (or on "End Presentation").
+- **Synced:** log in (GitHub or email/password), then on the share screen choose
+  **Sync online to share**. This uploads the PDF to Supabase and attaches it to your
+  account, keeping the same code — viewers can now join from any device by code/QR.
+  Logging in by itself never uploads anything; syncing is always an explicit opt-in.
 
 ## Thoughts
 
 - [x] For free users (not signed in) presentations are hosted locally in the
-  browser and synced across windows only; logging in syncs online across devices.
-- [ ] Replace the placeholder auth with real authentication and gate server upload behind it.
+  browser and synced across windows only; logging in lets you sync online across devices.
+- [x] Real Supabase auth (GitHub + email/password) with opt-in syncing of local
+  presentations.
 
 ## TODO
 

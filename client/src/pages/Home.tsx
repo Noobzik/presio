@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PresioLogo } from "@/components/PresioLogo";
-import { isLoggedIn, setLoggedIn } from "@/lib/auth";
+import { isLoggedIn, useAuth } from "@/lib/useAuth";
+import { LoginDialog } from "@/components/LoginDialog";
 import { idbPut, idbList, idbDelete, idbPruneOlderThan } from "@/lib/localStore";
 import "@/lib/pdf"; // ensure pdf.js worker is configured
 
@@ -29,7 +30,9 @@ export default function Home() {
   const charRefs = useRef<(HTMLInputElement | null)[]>([]);
   const code = chars.join("");
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
-  const [loggedIn, setLoggedInState] = useState(isLoggedIn);
+  const { user, signOut } = useAuth();
+  const loggedIn = !!user;
+  const [loginOpen, setLoginOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -161,12 +164,6 @@ export default function Home() {
     if (s.local) await idbDelete(s.id).catch(() => { /* ignore */ });
     else localStorage.removeItem(`session_${s.id}`);
     setRecentSessions((prev) => prev.filter((r) => r.id !== s.id));
-  };
-
-  const toggleLogin = () => {
-    const next = !loggedIn;
-    setLoggedIn(next);
-    setLoggedInState(next);
   };
 
   return (
@@ -356,16 +353,30 @@ export default function Home() {
         >
           How does this work?
         </Link>
-        <button
-          type="button"
-          onClick={toggleLogin}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
-          title="Placeholder — online sync for logged-in users is coming soon"
-        >
-          {loggedIn ? "Log out (online sync on)" : "Log in to sync online"}
-        </button>
+        {loggedIn ? (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="truncate max-w-[160px]">{user?.email ?? "Signed in"}</span>
+            <button
+              type="button"
+              onClick={() => signOut()}
+              className="hover:text-foreground transition-colors underline underline-offset-4"
+            >
+              Log out
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLoginOpen(true)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+          >
+            Log in to sync online
+          </button>
+        )}
         <ThemeToggle />
       </div>
+
+      {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
     </div>
   );
 }

@@ -12,12 +12,14 @@ create table if not exists sessions (
   timer_threshold integer,
   note_prefix text not null default 'note:',
   local boolean not null default false,
+  user_id uuid references auth.users,
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '24 hours')
 );
 
--- For existing deployments: add the column if the table predates it.
-alter table sessions add column if not exists local boolean not null default false;
+-- For existing deployments: add the columns if the table predates them.
+alter table sessions add column if not exists local boolean not null default true;
+alter table sessions add column if not exists user_id uuid references auth.users;
 
 -- Index for cleanup query
 create index if not exists idx_sessions_expires_at on sessions (expires_at);

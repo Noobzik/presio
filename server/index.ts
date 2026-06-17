@@ -119,6 +119,72 @@ app.post("/api/sessions/local", async (req, res) => {
   res.json({ id });
 });
 
+// Turn a local session into a synced one: upload the PDF (kept in the client's
+// IndexedDB until now) and attach the authenticated owner. Requires a valid
+// Supabase access token.
+app.post("/api/sessions/:id/claim", upload.single("pdf"), async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData.user) {
+      res.status(401).json({ error: "Invalid session" });
+      return;
+    }
+
+    const file = req.file;
+    if (!file || file.mimetype !== "application/pdf") {
+      res.status(400).json({ error: "A PDF file is required" });
+      return;
+    }
+
+    const { data: row, error: rowError } = await supabase
+      .from("sessions")
+      .select("id, local")
+      .eq("id", req.params.id)
+      .single();
+    if (rowError || !row) {
+      res.status(404).json({ error: "Session not found" });
+      return;
+    }
+    if (!row.local) {
+      res.status(409).json({ error: "Presentation is already synced" });
+      return;
+    }
+
+    const pdfPath = `${row.id}.pdf`;
+    const doc = await getDocument({ data: new Uint8Array(file.buffer) }).promise;
+    const totalSlides = doc.numPages;
+    doc.destroy();
+
+    const { error: uploadError } = await supabase.storage
+      .from("presentations")
+      .upload(pdfPath, file.buffer, { contentType: "application/pdf", upsert: true });
+    if (uploadError) {
+      res.status(500).json({ error: "Failed to upload PDF" });
+      return;
+    }
+
+    const { error: updateError } = await supabase
+      .from("sessions")
+      .update({ local: false, pdf_path: pdfPath, total_slides: totalSlides, user_id: userData.user.id })
+      .eq("id", row.id);
+    if (updateError) {
+      res.status(500).json({ error: "Failed to update session" });
+      return;
+    }
+
+    res.json({ id: row.id, totalSlides });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/api/sessions/:id", async (req, res) => {
   const { data, error } = await supabase
     .from("sessions")
