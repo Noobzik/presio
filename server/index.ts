@@ -50,7 +50,7 @@ app.use(
         "frame-src": ["'self'", "https://www.youtube.com", "https://player.vimeo.com"],
         "img-src": ["'self'", "data:", "blob:", "https:"],
         "media-src": ["'self'", "blob:", "https:"],
-        "connect-src": ["'self'", "ws:", "wss:", ...(supabaseHost ? [supabaseHost] : [])],
+        "connect-src": ["'self'", "blob:", "data:", "ws:", "wss:", ...(supabaseHost ? [supabaseHost] : [])],
         "worker-src": ["'self'", "blob:"],
         "upgrade-insecure-requests": null,
       },
