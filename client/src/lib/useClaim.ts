@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { idbGet, idbDelete } from "@/lib/localStore";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
 
 // Uploads the local PDF and turns this session into a normal synced one (same
@@ -15,6 +16,13 @@ export function useClaim(id: string) {
     setSyncError("");
     setSyncing(true);
     try {
+      // Pull a fresh token rather than the cached session's: getSession()
+      // auto-refreshes if it's near expiry, so the claim never fails with a
+      // stale 401.
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData.session) throw new Error("Please log in again");
+      const accessToken = sessionData.session.access_token;
+
       const rec = await idbGet(id);
       if (!rec) throw new Error("Local copy not found on this device");
       const form = new FormData();
@@ -22,7 +30,7 @@ export function useClaim(id: string) {
       if (currentSlide) form.append("current_slide", String(currentSlide));
       const res = await fetch(`/api/sessions/${id}/claim`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: form,
       });
       if (!res.ok) {

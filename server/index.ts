@@ -21,72 +21,17 @@ app.use(express.json());
 const generateSessionId = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
 const generatePassphrase = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
 
+// How many synced presentations a single user may have live at once. Sessions
+// expire after 24h (and are deleted on end), so this caps concurrent — not
+// lifetime — presentations.
+const MAX_CONCURRENT_PRESENTATIONS = 3;
+
 // Track which socket is the controller for each session
 const controllers = new Map<string, string>();
 // Track blanked state per session (transient, no DB persistence)
 const blankedSessions = new Set<string>();
 
 // --- REST API ---
-
-app.post("/api/sessions", upload.single("pdf"), async (req, res) => {
-  try {
-    const file = req.file;
-    if (!file || file.mimetype !== "application/pdf") {
-      res.status(400).json({ error: "A PDF file is required" });
-      return;
-    }
-
-    const id = generateSessionId();
-    const pdfPath = `${id}.pdf`;
-    const filename = file.originalname.replace(/\.pdf$/i, "");
-    const controllerToken = nanoid(24);
-    const passphrase = generatePassphrase();
-
-    const timerMode = req.body.timer_mode || null;
-    const timerDuration = req.body.timer_duration ? parseInt(req.body.timer_duration, 10) : null;
-    const timerThreshold = req.body.timer_threshold ? parseInt(req.body.timer_threshold, 10) : null;
-    const notePrefix = req.body.note_prefix || "note:";
-
-    // Count pages
-    const doc = await getDocument({ data: new Uint8Array(file.buffer) }).promise;
-    const totalSlides = doc.numPages;
-    doc.destroy();
-
-    // Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
-      .from("presentations")
-      .upload(pdfPath, file.buffer, { contentType: "application/pdf", upsert: true });
-
-    if (uploadError) {
-      res.status(500).json({ error: "Failed to upload PDF" });
-      return;
-    }
-
-    // Insert session row
-    const { error: dbError } = await supabase.from("sessions").insert({
-      id,
-      pdf_path: pdfPath,
-      filename,
-      total_slides: totalSlides,
-      controller_token: controllerToken,
-      passphrase,
-      timer_mode: timerMode,
-      timer_duration: timerDuration,
-      timer_threshold: timerThreshold,
-      note_prefix: notePrefix,
-    });
-
-    if (dbError) {
-      res.status(500).json({ error: "Failed to create session" });
-      return;
-    }
-
-    res.json({ id, totalSlides, controllerToken, passphrase });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 // Reserve a session code for a presentation kept local to the browser. No PDF
 // is uploaded — the bytes stay in the client's IndexedDB. We only record the
@@ -133,6 +78,27 @@ app.post("/api/sessions/:id/claim", upload.single("pdf"), async (req, res) => {
     const { data: userData, error: userError } = await supabase.auth.getUser(token);
     if (userError || !userData.user) {
       res.status(401).json({ error: "Invalid session" });
+      return;
+    }
+
+    // Cap how many synced presentations a user can have live at once. Only count
+    // non-expired ones; expired sessions are pending cleanup and don't count.
+    // Exclude the session being claimed so a re-claim of the same code is a no-op.
+    const { count, error: countError } = await supabase
+      .from("sessions")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userData.user.id)
+      .eq("local", false)
+      .neq("id", req.params.id)
+      .gt("expires_at", new Date().toISOString());
+    if (countError) {
+      res.status(500).json({ error: "Failed to check presentation limit" });
+      return;
+    }
+    if ((count ?? 0) >= MAX_CONCURRENT_PRESENTATIONS) {
+      res.status(403).json({
+        error: `You can have at most ${MAX_CONCURRENT_PRESENTATIONS} synced presentations at once. End one before syncing another.`,
+      });
       return;
     }
 
