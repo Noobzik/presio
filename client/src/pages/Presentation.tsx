@@ -147,6 +147,7 @@ export default function Presentation() {
       else if (type === "blank_update") setBlanked(payload.blanked);
       else if (type === "settings_update") setSettings(payload);
       else if (type === "media_update") setMediaState(payload);
+      else if (type === "media_time_update") setMediaTime(payload);
       else if (type === "audio_update") setAudioState(payload);
       else if (type === "session_ended") navigate("/", { replace: true });
       else if (type === "state_request") {
@@ -307,7 +308,16 @@ export default function Presentation() {
 
   const onMediaTime = useCallback(
     (id: string, t: number, playing: boolean, sampledAt: number) => {
-      if (!local) socket.emit("media_time", { id, t, playing, sampledAt });
+      // Local sessions sync over the BroadcastChannel; both windows share the
+      // same Date.now() clock, so sampledAt-based latency comp still holds.
+      if (local) {
+        channelRef.current?.postMessage({
+          type: "media_time_update",
+          payload: { id, t, playing, sampledAt, seq: Date.now() },
+        });
+      } else {
+        socket.emit("media_time", { id, t, playing, sampledAt });
+      }
     },
     [local]
   );
@@ -325,6 +335,19 @@ export default function Presentation() {
   const effectiveMuted = isMutedForRole(role === "controller" ? "controller" : "viewer", audioState);
 
   const currentMedia = mediaPlacements.get(displaySlide) ?? [];
+
+  // When the controller lands on a slide whose media is marked autoplay, start
+  // it through the shared mediaState. This makes the controller the time-sync
+  // source so it and all viewers play in lockstep — otherwise the viewer would
+  // autoplay on its own (via the autostart path) while the controller stays
+  // paused, and the two would drift out of sync.
+  useEffect(() => {
+    if (role !== "controller") return;
+    const auto = currentMedia.find((p) => p.autoplay);
+    if (auto) onMediaControl(auto.id, "play");
+    // displaySlide drives currentMedia; re-run on slide change or once media loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displaySlide, role, mediaPlacements]);
 
   if (loading) {
     return (

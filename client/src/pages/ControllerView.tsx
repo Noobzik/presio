@@ -212,7 +212,6 @@ export function ControllerView({
 }: ControllerViewProps) {
   const isMobile = useIsMobile();
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [passphraseDialogOpen, setPassphraseDialogOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [timerSettingsOpen, setTimerSettingsOpen] = useState(false);
@@ -345,6 +344,7 @@ export function ControllerView({
       content: (
         <CurrentSlideCard
           ref={currentCanvasRef}
+          local={local}
           mediaPlacements={mediaPlacements}
           mediaState={mediaState}
           onMediaControl={onMediaControl}
@@ -413,11 +413,6 @@ export function ControllerView({
           )}
         </div>
         <div className="flex items-center gap-1">
-          {passphrase && (
-            <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setPassphraseDialogOpen(true)}>
-              Passphrase
-            </Button>
-          )}
           <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setShareDialogOpen(true)}>
             Share
           </Button>
@@ -502,9 +497,11 @@ export function ControllerView({
         >
           Next
         </Button>
-        <Button variant="ghost" size="sm" onClick={onSyncAll} title="Bring all viewers back to the current slide">
-          Sync All
-        </Button>
+        {!local && (
+          <Button variant="ghost" size="sm" onClick={onSyncAll} title="Bring all viewers back to the current slide">
+            Sync All
+          </Button>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {pdfUrl && (
             <Button variant="ghost" size="sm" asChild>
@@ -554,24 +551,6 @@ export function ControllerView({
       )}
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
-
-      {passphraseDialogOpen && (
-        <DialogOverlay onClose={() => setPassphraseDialogOpen(false)} maxWidth="max-w-xs">
-          <div className="text-center space-y-3">
-            <h2 className="text-lg font-semibold">Controller Passphrase</h2>
-            <p className="text-xs text-muted-foreground">
-              Share this passphrase to grant controller access
-            </p>
-            <p className="text-2xl font-bold tracking-widest font-mono select-all">
-              {passphrase}
-            </p>
-            <CopyField label="" value={passphrase} />
-          </div>
-          <Button className="w-full" variant="ghost" onClick={() => setPassphraseDialogOpen(false)}>
-            Close
-          </Button>
-        </DialogOverlay>
-      )}
 
       {settingsOpen && (
         <DialogOverlay onClose={() => setSettingsOpen(false)} maxWidth="max-w-md">
@@ -756,9 +735,11 @@ function MobileLayout({
           <p className="text-center text-xs text-muted-foreground tabular-nums">
             {currentSlide} / {totalSlides}
           </p>
-          <Button variant="ghost" size="sm" onClick={onSyncAll}>
-            Sync All
-          </Button>
+          {!local && (
+            <Button variant="ghost" size="sm" onClick={onSyncAll}>
+              Sync All
+            </Button>
+          )}
         </div>
         <div className="flex gap-2">
           <Button

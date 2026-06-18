@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { getDocument } from "pdfjs-dist";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { DialogOverlay } from "@/components/ui/dialog-overlay";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { PresioLogo } from "@/components/PresioLogo";
 import { idbPut, idbList, idbDelete, idbPruneOlderThan } from "@/lib/localStore";
@@ -28,6 +29,7 @@ export default function Home() {
   const charRefs = useRef<(HTMLInputElement | null)[]>([]);
   const code = chars.join("");
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
+  const [confirmRemove, setConfirmRemove] = useState<RecentSession | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +144,13 @@ export default function Home() {
     if (s.local) await idbDelete(s.id).catch(() => { /* ignore */ });
     else localStorage.removeItem(`session_${s.id}`);
     setRecentSessions((prev) => prev.filter((r) => r.id !== s.id));
+  };
+
+  const handleRemove = (s: RecentSession) => {
+    // Local presentations live only in this browser, so removing them is
+    // permanent — confirm first. Server-backed ones just drop the local token.
+    if (s.local) setConfirmRemove(s);
+    else removeRecent(s);
   };
 
   return (
@@ -312,7 +321,7 @@ export default function Home() {
                   <Button size="sm" variant="outline" onClick={() => navigate(`/s/${s.id}?role=viewer`)}>
                     View
                   </Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeRecent(s)} title="Remove">
+                  <Button size="sm" variant="ghost" onClick={() => handleRemove(s)} title="Remove">
                     ✕
                   </Button>
                 </div>
@@ -331,6 +340,33 @@ export default function Home() {
         </Link>
         <ThemeToggle />
       </div>
+
+      {confirmRemove && (
+        <DialogOverlay onClose={() => setConfirmRemove(null)}>
+          <div className="space-y-2 text-center">
+            <h2 className="text-lg font-semibold">Delete presentation?</h2>
+            <p className="text-sm text-muted-foreground">
+              This presentation is stored only in this browser and will be
+              permanently deleted. This action cannot be undone.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button className="flex-1" variant="outline" onClick={() => setConfirmRemove(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              variant="destructive"
+              onClick={() => {
+                removeRecent(confirmRemove);
+                setConfirmRemove(null);
+              }}
+            >
+              Delete
+            </Button>
+          </div>
+        </DialogOverlay>
+      )}
 
     </div>
   );

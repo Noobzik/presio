@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import type { MediaPlacement } from "@/lib/pdf";
 
 interface Props {
+  local?: boolean;
   mediaPlacements?: MediaPlacement[];
   mediaState?: MediaState;
   onMediaControl?: (id: string, action: "play" | "pause" | "reset") => void;
@@ -48,6 +49,7 @@ const TARGET_ICON: Record<AudioTarget, React.ComponentType<{ className?: string 
 export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
   (
     {
+      local = false,
       mediaPlacements = [],
       mediaState,
       onMediaControl,
@@ -136,6 +138,7 @@ export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
                     </Button>
                     {showAudio && isVideo && (
                       <AudioControl
+                        local={local}
                         audioState={audioState!}
                         onAudioChange={onAudioChange!}
                       />
@@ -152,9 +155,11 @@ export const CurrentSlideCard = forwardRef<HTMLDivElement, Props>(
 );
 
 function AudioControl({
+  local,
   audioState,
   onAudioChange,
 }: {
+  local: boolean;
   audioState: AudioState;
   onAudioChange: (next: { muted: boolean; target: AudioTarget }) => void;
 }) {
@@ -163,20 +168,32 @@ function AudioControl({
     ? "bg-red-500 text-white shadow-md hover:!bg-red-600 hover:!text-white"
     : "bg-purple-500 text-white shadow-md hover:!bg-purple-600 hover:!text-white";
 
+  // Local sessions run the viewer on the same machine as the controller, so the
+  // controller is the only sensible audio source — drop the target selector and
+  // pin the target to "controller".
+  const muteButton = (
+    <Button
+      type="button"
+      size="icon-lg"
+      onClick={() =>
+        onAudioChange({
+          muted: !audioState.muted,
+          target: local ? "controller" : audioState.target,
+        })
+      }
+      className={activeColors}
+      title={isMuted ? "Unmute" : "Mute"}
+      aria-pressed={isMuted}
+    >
+      {isMuted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+    </Button>
+  );
+
+  if (local) return muteButton;
+
   return (
     <ButtonGroup>
-      <Button
-        type="button"
-        size="icon-lg"
-        onClick={() =>
-          onAudioChange({ muted: !audioState.muted, target: audioState.target })
-        }
-        className={activeColors}
-        title={isMuted ? "Unmute" : "Mute"}
-        aria-pressed={isMuted}
-      >
-        {isMuted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
-      </Button>
+      {muteButton}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
