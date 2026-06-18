@@ -1,0 +1,59 @@
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { LoginDialog } from "@/components/LoginDialog";
+import { useAuth } from "@/lib/useAuth";
+
+/**
+ * Shows the current sign-in status and lets the user log in / out.
+ * - "compact": a single inline control (for the home page footer).
+ * - "section": a titled block with status + action (for the settings panel).
+ */
+export function AccountControl({ variant = "compact" }: { variant?: "compact" | "section" }) {
+  const { user, signOut, loading } = useAuth();
+  const [loginOpen, setLoginOpen] = useState(false);
+
+  if (loading) return null;
+
+  if (variant === "section") {
+    return (
+      <>
+        <section className="space-y-2">
+          <h3 className="text-sm font-medium">Account</h3>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm text-muted-foreground truncate">
+              {user ? user.email : "Not signed in"}
+            </span>
+            {user ? (
+              <Button size="sm" variant="outline" onClick={() => signOut()}>
+                Sign out
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setLoginOpen(true)}>
+                Sign in
+              </Button>
+            )}
+          </div>
+        </section>
+        {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {user ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground max-w-[180px] truncate">{user.email}</span>
+          <Button size="sm" variant="ghost" onClick={() => signOut()}>
+            Log out
+          </Button>
+        </div>
+      ) : (
+        <Button size="sm" variant="ghost" onClick={() => setLoginOpen(true)}>
+          Log in
+        </Button>
+      )}
+      {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} />}
+    </>
+  );
+}

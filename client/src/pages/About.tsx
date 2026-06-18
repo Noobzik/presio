@@ -2,6 +2,8 @@ import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+const PACKAGE_URL = "https://github.com/benedict-armstrong/presio-typst-package";
+
 export default function About() {
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -10,7 +12,7 @@ export default function About() {
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">About Presio</h1>
             <p className="text-sm text-muted-foreground">
-              A simple tool for presenting PDFs remotely.
+              A simple tool for presenting PDFs — locally or shared live across devices.
             </p>
           </div>
 
@@ -18,36 +20,101 @@ export default function About() {
             <div className="space-y-1">
               <h2 className="text-base font-medium text-foreground">How it works</h2>
               <ol className="list-decimal list-inside space-y-1">
-                <li>Upload a PDF presentation on the home page.</li>
-                <li>You are redirected to the controller view where you can navigate slides.</li>
-                <li>Share the 6-character session code with your audience.</li>
-                <li>Viewers enter the code on the home page and see your slides in real time.</li>
+                <li>Upload a PDF on the home page. By default it stays in your browser — nothing is uploaded.</li>
+                <li>You land on the controller view, where you navigate slides, see speaker notes, and control media.</li>
+                <li>A viewer window opens automatically and mirrors the controller, kept in sync as you present.</li>
+                <li>Recent presentations are listed on the home page so you can pick up where you left off.</li>
               </ol>
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-base font-medium text-foreground">Local by default</h2>
+              <p>
+                New presentations are <span className="text-foreground font-medium">local</span>: the PDF lives only
+                in this browser and is never sent to a server. The controller and viewer windows sync directly on
+                your device, so it works offline and keeps your slides private. Local presentations stay available
+                for up to 7 days.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <h2 className="text-base font-medium text-foreground">Presenting across devices</h2>
+              <p>
+                To let an audience follow along from their own devices, log in and sync the presentation online from
+                the share screen. You'll get a 6-character session code to share — viewers enter it on the home page
+                and see your slides update in real time. You can also share a controller passphrase to let someone
+                else drive. Logged-in users see their presentations on the home page; online presentations expire
+                automatically.
+              </p>
             </div>
 
             <div className="space-y-1">
               <h2 className="text-base font-medium text-foreground">Details</h2>
               <ul className="list-disc list-inside space-y-1">
-                <li>Slide changes are synced instantly via WebSockets.</li>
-                <li>The controller has keyboard shortcuts (arrow keys, spacebar).</li>
+                <li>Slide changes sync instantly — locally between windows, or live via WebSockets when shared.</li>
+                <li>Customizable controller layout, a presentation timer, and remappable keyboard shortcuts.</li>
+                <li>Embedded videos, GIFs, and YouTube/Vimeo — playback (including autoplay and seeking) stays in sync with viewers.</li>
                 <li>Anyone can download the PDF from the presentation view.</li>
-                <li>Presentations automatically expire after 24 hours.</li>
               </ul>
             </div>
           </div>
 
           <div className="space-y-4 text-sm text-muted-foreground">
             <div className="space-y-1">
-              <h2 className="text-base font-medium text-foreground">Speaker Notes</h2>
+              <h2 className="text-base font-medium text-foreground">Videos &amp; speaker notes with Typst</h2>
               <p>
-                Presio can display speaker notes embedded in your PDF as link annotations.
-                The controller view has a toggleable notes panel that renders markdown.
+                The easiest way to add videos and speaker notes is the{" "}
+                <a
+                  href={PACKAGE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-foreground underline underline-offset-4 hover:text-muted-foreground"
+                >
+                  Presio Typst package
+                </a>
+                . It attaches the media and notes to your PDF in a format Presio reads automatically — no manual
+                annotation wiring needed. Import it at the top of your document:
+              </p>
+              <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`#import "@preview/presio:0.2.0": media, speaker-notes`}</pre>
+
+              <p className="pt-2">Add speaker notes to any slide:</p>
+              <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`= Introduction
+
+Hello world.
+
+#speaker-notes[
+  Remember to mention the demo before moving on.
+]`}</pre>
+
+              <p className="pt-2">Embed a local video or GIF, a direct video URL, or a YouTube/Vimeo link:</p>
+              <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`// Local file
+#media("figures/demo.gif", width: 60%)
+
+// Direct URL with a poster image
+#media(
+  "https://example.com/video.mp4",
+  width: 40%,
+  aspect-ratio: 16/9,
+  placeholder: image("poster.png"),
+)
+
+// YouTube / Vimeo are detected automatically
+#media("https://www.youtube.com/watch?v=dQw4w9WgXcQ", width: 60%, aspect-ratio: 16/9)`}</pre>
+              <p className="text-xs">
+                Works with plain Typst, Polylux, or Touying. Requires Typst 0.15+.
               </p>
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium text-foreground">Typst</h3>
-              <p>Add a helper function to your document and call it on each slide:</p>
+            <div className="space-y-1 pt-2">
+              <h2 className="text-base font-medium text-foreground">Adding notes manually</h2>
+              <p>
+                Prefer not to use the package? Speaker notes can also be embedded by hand. Presio reads them from
+                JSON files attached to the PDF (Typst) or from <code className="bg-muted px-1 rounded text-xs">note:</code>{" "}
+                link annotations (LaTeX), and renders them as markdown in the controller's notes panel.
+              </p>
+
+              <h3 className="text-sm font-medium text-foreground pt-2">Typst</h3>
+              <p>Define a helper and call it on each slide:</p>
               <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`// Define the speaker-notes function
 #let speaker-notes(notes) = context {
   // 1. Get the current page number to ensure a unique filename per slide
@@ -70,14 +137,10 @@ export default function About() {
   )
 }
 `}</pre>
-            </div>
+              <p>Example usage:</p>
+              <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`#speaker-notes("Remember to mention the demo.")`}</pre>
 
-            Example usage:
-            <br />
-            <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`#speaker-notes("Remember to mention the demo.")`}</pre>
-
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium text-foreground">LaTeX (hyperref)</h3>
+              <h3 className="text-sm font-medium text-foreground pt-2">LaTeX (hyperref)</h3>
               <p>Use the <code className="bg-muted px-1 rounded text-xs">hyperref</code> package to create an invisible link:</p>
               <pre className="bg-muted rounded-md p-3 overflow-x-auto text-xs font-mono whitespace-pre">{`\\usepackage{hyperref}
 

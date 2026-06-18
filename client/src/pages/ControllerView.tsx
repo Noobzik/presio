@@ -13,6 +13,7 @@ import { MobileControllerMenu } from "@/components/MobileControllerMenu";
 import { PresentationTimer } from "@/components/PresentationTimer";
 import { ConnectionIndicator } from "@/components/ConnectionIndicator";
 import { LoginDialog } from "@/components/LoginDialog";
+import { AccountControl } from "@/components/AccountControl";
 import { SyncShareOverlay } from "@/components/SyncShareOverlay";
 import { useAuth } from "@/lib/useAuth";
 import { useClaim } from "@/lib/useClaim";
@@ -555,6 +556,10 @@ export function ControllerView({
       {settingsOpen && (
         <DialogOverlay onClose={() => setSettingsOpen(false)} maxWidth="max-w-md">
           <h2 className="text-lg font-semibold">Settings</h2>
+
+          <AccountControl variant="section" />
+
+          <Separator />
 
           <section className="space-y-2">
             <h3 className="text-sm font-medium">Layout</h3>

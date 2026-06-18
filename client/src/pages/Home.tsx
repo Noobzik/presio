@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AccountControl } from "@/components/AccountControl";
 import { PresioLogo } from "@/components/PresioLogo";
 import { idbPut, idbList, idbDelete, idbPruneOlderThan } from "@/lib/localStore";
 import "@/lib/pdf"; // ensure pdf.js worker is configured
@@ -336,8 +337,9 @@ export default function Home() {
           to="/about"
           className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
         >
-          How does this work?
+          How does Presio work?
         </Link>
+        <AccountControl />
         <ThemeToggle />
       </div>
 
