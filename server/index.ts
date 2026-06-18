@@ -46,8 +46,8 @@ app.use(
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         "default-src": ["'self'"],
-        "script-src": ["'self'", "https://www.youtube.com", "https://player.vimeo.com"],
-        "frame-src": ["'self'", "https://www.youtube.com", "https://player.vimeo.com"],
+        "script-src": ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
+        "frame-src": ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com", "https://player.vimeo.com"],
         "img-src": ["'self'", "data:", "blob:", "https:"],
         "media-src": ["'self'", "blob:", "https:"],
         "connect-src": ["'self'", "blob:", "data:", "ws:", "wss:", ...(supabaseHost ? [supabaseHost] : [])],
