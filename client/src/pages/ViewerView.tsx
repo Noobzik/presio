@@ -11,6 +11,7 @@ import { MediaOverlay, type MediaState, type MediaTimeSync } from "@/components/
 import type { MediaPlacement } from "@/lib/pdf";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { DownloadStrippedButton } from "@/components/DownloadStrippedButton";
+import { ViewerHint } from "@/components/ViewerHint";
 
 export function ViewerView({
   id,
@@ -140,6 +141,8 @@ export function ViewerView({
         muted={muted}
         role="viewer"
       />
+
+      <ViewerHint canNavigate={!local} />
 
       {blanked && (
         <div className="absolute inset-0 bg-black z-10 flex items-center justify-center">

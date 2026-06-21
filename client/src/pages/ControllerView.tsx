@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Link } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { cn, getSessionAuth } from "@/lib/utils";
-import { Settings, Check, Option, Plus } from "lucide-react";
+import { Settings, Check, Option, Plus, Share2 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
@@ -15,6 +15,8 @@ import { ConnectionIndicator } from "@/components/ConnectionIndicator";
 import { LoginDialog } from "@/components/LoginDialog";
 import { AccountControl } from "@/components/AccountControl";
 import { SyncShareOverlay } from "@/components/SyncShareOverlay";
+import { ControllerOnboarding } from "@/components/ControllerOnboarding";
+import { hasCompletedControllerOnboarding } from "@/lib/onboarding";
 import { useAuth } from "@/lib/useAuth";
 import { useClaim } from "@/lib/useClaim";
 import { ControllerCard } from "@/components/controller/ControllerCard";
@@ -223,6 +225,8 @@ export function ControllerView({
   const [viewerBlocked, setViewerBlocked] = useState(false);
   const [viewerPromptOpen, setViewerPromptOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
+  // First-run tutorial for the controller. Shown before the viewer prompt.
+  const [onboardingOpen, setOnboardingOpen] = useState(() => !hasCompletedControllerOnboarding());
 
   const { user } = useAuth();
   const loggedIn = !!user;
@@ -236,9 +240,9 @@ export function ControllerView({
   // the presenter to open it themselves. A real click keeps them on the
   // controller and avoids popup blockers.
   useEffect(() => {
-    if (isMobile) return;
+    if (isMobile || onboardingOpen) return;
     setViewerPromptOpen(true);
-  }, [id, isMobile]);
+  }, [id, isMobile, onboardingOpen]);
 
   const [layouts, setLayouts] = useState<CardLayout[]>(loadLayout);
   const [cardVisibility, setCardVisibility] = useState<Record<string, boolean>>(loadVisibility);
@@ -430,9 +434,6 @@ export function ControllerView({
           )}
         </div>
         <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setShareDialogOpen(true)}>
-            Share
-          </Button>
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
@@ -442,6 +443,11 @@ export function ControllerView({
             <Settings size={15} />
           </button>
           <ThemeToggle />
+          <span className="text-muted-foreground/40">|</span>
+          <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => setShareDialogOpen(true)}>
+            Share
+            <Share2 size={12} className="inline ml-1" />
+          </Button>
           <span className="text-muted-foreground/40">|</span>
           <button
             type="button"
@@ -724,6 +730,13 @@ export function ControllerView({
             </button>
           </div>
         </DialogOverlay>
+      )}
+
+      {onboardingOpen && (
+        <ControllerOnboarding
+          onClose={() => setOnboardingOpen(false)}
+          onOpenViewer={openViewer}
+        />
       )}
     </div>
   );

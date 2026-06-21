@@ -30,6 +30,7 @@ export function ThemeToggle({ size = "sm" }: { size?: "sm" | "icon" }) {
   const { theme, setTheme } = useTheme();
   return (
     <Button
+      className="text-muted-foreground hover:text-foreground"
       size={size}
       variant="ghost"
       onClick={() => setTheme(next[theme])}
