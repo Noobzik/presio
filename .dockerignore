@@ -6,6 +6,8 @@ client/dist
 *.env
 **/.env
 .git
-# The self-hosted stack (vendored Supabase volumes + secrets) is not part of the
-# app image build context.
+# The self-hosted stack (vendored Supabase volumes + secrets) and the shared
+# reverse proxy are not part of the app image build context.
 deploy
+proxy
+docker-compose.yml

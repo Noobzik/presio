@@ -27,13 +27,21 @@ Whichever backend you use, it must have:
      to the auth **Redirect URLs** so the OAuth round-trip can return to the
      share screen.
 
-## Deployment (self-hosting on Coolify)
+## Deployment (self-hosting)
 
-The [`deploy/`](deploy/README.md) directory contains a single, config-driven
-`docker-compose.yml` that runs the whole thing — the Presio app, a pinned
-self-hosted Supabase stack, and MinIO (S3 storage backend) — with all settings
-in `deploy/.env`. See **[`deploy/README.md`](deploy/README.md)** for the full
-Coolify walkthrough.
+The root [`docker-compose.yml`](docker-compose.yml) runs the whole thing — the
+Presio app, a pinned self-hosted Supabase stack, and MinIO (S3 storage backend) —
+behind a shared [Traefik](proxy/) reverse proxy that handles TLS. In short:
+
+```bash
+docker network create web                 # once per host
+(cd proxy && cp .env.example .env && docker compose up -d)   # shared proxy
+cp deploy/.env.example .env && docker compose up -d --build  # the stack
+```
+
+All settings live in the root `.env` (copied from `deploy/.env.example`). See
+**[`deploy/README.md`](deploy/README.md)** for the full walkthrough, including
+how to host other apps behind the same proxy.
 
 ## Environment Variables
 

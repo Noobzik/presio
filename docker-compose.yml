@@ -1,7 +1,7 @@
-# Presio self-hosted stack (Coolify-friendly, single combined compose).
+# Presio self-hosted stack — single combined compose, run from the repo root.
 #
 # This is the official Supabase self-hosting compose (vendored, pinned — see
-# volumes/UPSTREAM_PINNED_SHA.txt) with three local adaptations baked in:
+# deploy/volumes/UPSTREAM_PINNED_SHA.txt) with three local adaptations baked in:
 #   1. Storage uses the S3 backend pointed at the bundled MinIO service
 #      (merged from upstream docker-compose.s3.yml) — synced PDFs live in MinIO.
 #   2. A `presio` service builds and serves this repo (Express + Socket.IO + the
@@ -9,12 +9,17 @@
 #   3. The repo's dbschema.sql is mounted as a Postgres init migration, so the
 #      `sessions` table + `presentations` bucket are created on first boot.
 #
-# Everything is driven by deploy/.env (copy from deploy/.env.example). To run:
-#   cd deploy && docker compose up -d
-# On Coolify: point a "Docker Compose" resource at deploy/docker-compose.yml and
-# paste the env values. See deploy/README.md.
+# Ingress: the `presio` and `kong` containers carry Traefik labels and join the
+# external `web` network, so the shared Traefik proxy (see proxy/) terminates TLS
+# and routes the two domains to them. No host ports are published here.
+#
+# Everything is driven by a root .env (copy from deploy/.env.example). To run:
+#   docker network create web   # once per host (shared with the proxy)
+#   cp deploy/.env.example .env  # then fill it in
+#   docker compose up -d
+# See deploy/README.md.
 
-name: supabase
+name: presio
 
 services:
 
@@ -79,6 +84,7 @@ services:
       default:
         aliases:
           - api-gw
+      web:
     healthcheck:
       test: ["CMD", "kong", "health"]
       interval: 5s
@@ -87,9 +93,15 @@ services:
     depends_on:
       studio:
         condition: service_healthy
-    ports:
-      - ${KONG_HTTP_PORT}:8000/tcp
-      - ${KONG_HTTPS_PORT}:8443/tcp
+    # Ingress via the shared Traefik proxy (no host ports). Routes the Supabase
+    # domain to Kong's HTTP port 8000.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.supabase.rule=Host(`${SUPABASE_HOST}`)"
+      - "traefik.http.routers.supabase.entrypoints=websecure"
+      - "traefik.http.routers.supabase.tls.certresolver=le"
+      - "traefik.http.services.supabase.loadbalancer.server.port=8000"
     volumes:
       - ./deploy/volumes/api/kong.yml:/home/kong/temp.yml:ro,z
       - ./deploy/volumes/api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro,z
@@ -666,6 +678,9 @@ services:
         VITE_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
         VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY: ${ANON_KEY}
     restart: unless-stopped
+    networks:
+      default:
+      web:
     depends_on:
       kong:
         condition: service_healthy
@@ -678,8 +693,22 @@ services:
       # Same-origin in production (client is served by this server), so leave
       # ALLOWED_ORIGIN unset. Set it only if the client is hosted separately.
       ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-}
-    ports:
-      - ${PRESIO_HTTP_PORT:-3001}:3001
+    # Ingress via the shared Traefik proxy (no host ports). Routes the app domain
+    # to the Express/Socket.IO server on port 3001 (websockets pass through).
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.presio.rule=Host(`${APP_HOST}`)"
+      - "traefik.http.routers.presio.entrypoints=websecure"
+      - "traefik.http.routers.presio.tls.certresolver=le"
+      - "traefik.http.services.presio.loadbalancer.server.port=3001"
+
+networks:
+  # Internal network for the Supabase services to talk to each other.
+  default:
+  # Shared with the Traefik proxy (created once per host: `docker network create web`).
+  web:
+    external: true
 
 volumes:
   db-config:
