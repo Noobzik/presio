@@ -169,6 +169,11 @@ export default function Home() {
     navigate(`/s/${code}?role=${role}`);
   };
 
+  // Once a full code is entered (typed or pasted), join the session as a viewer.
+  useEffect(() => {
+    if (code.length === CODE_LENGTH) navigate(`/s/${code}?role=viewer`);
+  }, [code, navigate]);
+
   const removeRecent = async (s: RecentSession) => {
     if (s.local) await idbDelete(s.id).catch(() => { /* ignore */ });
     else localStorage.removeItem(`session_${s.id}`);
@@ -315,24 +320,6 @@ export default function Home() {
                 />
               ))}
             </div>
-            {code.length === CODE_LENGTH && (
-              <div className="flex gap-2">
-                <Button
-                  className="flex-1"
-                  variant="outline"
-                  onClick={() => joinSession("viewer")}
-                >
-                  Join as Viewer
-                </Button>
-                <Button
-                  className="flex-1"
-                  variant="outline"
-                  onClick={() => joinSession("controller")}
-                >
-                  Join as Controller
-                </Button>
-              </div>
-            )}
           </div>
         </CardContent>
       </Card>

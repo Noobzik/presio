@@ -86,18 +86,3 @@ export async function createExternalSession(
   rememberToken(data.id, data.controllerToken, data.passphrase);
   return data.id as string;
 }
-
-// Convert an existing local session into an external one in place (same code).
-export async function shareLocalSessionViaUrl(id: string, meta: ExternalPdfMeta): Promise<void> {
-  const res = await fetch(`/api/sessions/${id}/share-url`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url: meta.url, total_slides: meta.totalSlides }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || "Failed to share presentation");
-  }
-  const data = await res.json();
-  rememberToken(id, data.controllerToken, data.passphrase);
-}

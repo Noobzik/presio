@@ -198,46 +198,6 @@ app.post("/api/sessions/external", async (req, res) => {
   res.json({ id, controllerToken, passphrase });
 });
 
-// Convert an existing local session into an external one in place (same code):
-// the client supplies the URL it now hosts the PDF at. Protected, like the local
-// session itself, only by knowledge of the random session code.
-app.post("/api/sessions/:id/share-url", async (req, res) => {
-  const url = req.body.url;
-  const totalSlides = parseInt(req.body.total_slides, 10);
-  if (!isValidHttpsUrl(url)) {
-    res.status(400).json({ error: "A valid https PDF URL is required" });
-    return;
-  }
-
-  const { data: row, error: rowError } = await supabase
-    .from("sessions")
-    .select("id, local, controller_token, passphrase")
-    .eq("id", req.params.id)
-    .single();
-  if (rowError || !row) {
-    res.status(404).json({ error: "Session not found" });
-    return;
-  }
-  if (!row.local) {
-    res.status(409).json({ error: "Presentation is already shared" });
-    return;
-  }
-
-  const update: Record<string, unknown> = { local: false, pdf_url: url };
-  if (Number.isFinite(totalSlides) && totalSlides >= 1) update.total_slides = totalSlides;
-
-  const { error: updateError } = await supabase
-    .from("sessions")
-    .update(update)
-    .eq("id", row.id);
-  if (updateError) {
-    res.status(500).json({ error: "Failed to update session" });
-    return;
-  }
-
-  res.json({ id: row.id, controllerToken: row.controller_token, passphrase: row.passphrase });
-});
-
 // Turn a local session into a synced one: upload the PDF (kept in the client's
 // IndexedDB until now) and attach the authenticated owner. Requires a valid
 // Supabase access token.

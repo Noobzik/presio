@@ -17,7 +17,6 @@ import { AccountControl } from "@/components/AccountControl";
 import { SyncShareOverlay } from "@/components/SyncShareOverlay";
 import { useAuth } from "@/lib/useAuth";
 import { useClaim } from "@/lib/useClaim";
-import { useShareUrl } from "@/lib/useShareUrl";
 import { ControllerCard } from "@/components/controller/ControllerCard";
 import { CurrentSlideCard } from "@/components/controller/CurrentSlideCard";
 import { NextSlideCard } from "@/components/controller/NextSlideCard";
@@ -228,14 +227,9 @@ export function ControllerView({
   const { user } = useAuth();
   const loggedIn = !!user;
   const { syncing, syncError, sync } = useClaim(id);
-  const { converting, shareUrlError, shareViaUrl } = useShareUrl(id);
 
   const syncOnline = async () => {
     if (await sync(currentSlide)) onSynced();
-  };
-
-  const shareUrl = async (url: string) => {
-    if (await shareViaUrl(url)) onSynced();
   };
 
   // Rather than auto-opening the viewer (which steals the active tab), prompt
@@ -540,6 +534,12 @@ export function ControllerView({
         <DialogOverlay onClose={() => setShareDialogOpen(false)} maxWidth="max-w-[50%]">
           {local ? (
             <>
+              <p className="text-sm text-muted-foreground text-center">
+                This presentation is local to this browser. Sync it online to let
+                viewers join from any device.
+              </p>
+              <br />
+              <br />
               <SyncShareOverlay
                 id={id}
                 viewerUrl={viewerUrl}
@@ -548,14 +548,7 @@ export function ControllerView({
                 syncError={syncError}
                 onLogin={() => setLoginOpen(true)}
                 onSync={syncOnline}
-                converting={converting}
-                shareUrlError={shareUrlError}
-                onShareUrl={shareUrl}
               />
-              <p className="text-sm text-muted-foreground text-center">
-                This presentation is local to this browser. Sync it online to let
-                viewers join from any device.
-              </p>
             </>
           ) : (
             <>
@@ -566,6 +559,8 @@ export function ControllerView({
               </div>
             </>
           )}
+          <br />
+          <br />
           <Button className="w-full" variant="ghost" onClick={() => setShareDialogOpen(false)}>
             Close
           </Button>
@@ -692,6 +687,9 @@ export function ControllerView({
             {/* <h2 className="text-base font-semibold">Open the viewer</h2> */}
             <p className="text-xs text-muted-foreground">
               Hold <span className="font-medium text-foreground">{isMac ? "⌥ Option" : "Option/Alt"}</span> and click to open it in its own window.
+              <br />
+              <br />
+              Drag the new window to a different screen to present.
             </p>
             <div className="flex items-center gap-2">
               <kbd className="inline-flex items-center justify-center h-9 min-w-9 px-2 rounded-md border border-border bg-muted text-sm font-medium text-muted-foreground shadow-sm">
@@ -714,7 +712,7 @@ export function ControllerView({
                 onClick={openViewer}
                 className={cn(buttonVariants({ variant: "default" }))}
               >
-                Open Viewer
+                Open Viewer Window
               </button>
             </div>
             <button
