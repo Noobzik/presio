@@ -1,4 +1,5 @@
 import { getDocument } from "pdfjs-dist";
+import { setSessionAuth } from "@/lib/utils";
 import "@/lib/pdf"; // ensure the pdf.js worker is configured
 
 const LOAD_ERROR =
@@ -61,7 +62,7 @@ export async function loadExternalPdfMeta(rawUrl: string): Promise<ExternalPdfMe
 // the same localStorage shape as synced/claimed sessions.
 function rememberToken(id: string, controllerToken?: string, passphrase?: string) {
   if (!controllerToken) return;
-  localStorage.setItem(`session_${id}`, JSON.stringify({ controllerToken, passphrase }));
+  setSessionAuth(id, { controllerToken, passphrase });
 }
 
 // Create a new shareable session backed by an externally-hosted PDF. Returns the

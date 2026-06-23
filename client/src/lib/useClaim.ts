@@ -2,6 +2,7 @@ import { useState } from "react";
 import { idbGet, idbDelete } from "@/lib/localStore";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/lib/useAuth";
+import { setSessionAuth } from "@/lib/utils";
 
 // Uploads the local PDF and turns this session into a normal synced one (same
 // code). Stores the returned controller token so the presenter keeps control,
@@ -39,10 +40,7 @@ export function useClaim(id: string) {
       }
       const data = await res.json();
       if (data.controllerToken) {
-        localStorage.setItem(
-          `session_${id}`,
-          JSON.stringify({ controllerToken: data.controllerToken, passphrase: data.passphrase })
-        );
+        setSessionAuth(id, { controllerToken: data.controllerToken, passphrase: data.passphrase });
       }
       await idbDelete(id).catch(() => { /* ignore */ });
       return true;

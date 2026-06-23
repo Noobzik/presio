@@ -1,19 +1,17 @@
-const ONBOARDED_KEY = "presio_controller_onboarded";
+import { lsSetString, STORAGE_KEYS } from "./storage";
 
 // Whether the presenter has already seen (or skipped) the controller tutorial.
-// Defaults to `true` if localStorage is unavailable so we never block the UI.
+// Note the asymmetric defaults: an absent flag means "not yet onboarded" (show
+// the tutorial), but if localStorage throws entirely we default to `true` so a
+// private-mode window is never blocked by it.
 export function hasCompletedControllerOnboarding(): boolean {
   try {
-    return localStorage.getItem(ONBOARDED_KEY) === "true";
+    return localStorage.getItem(STORAGE_KEYS.controllerOnboarded) === "true";
   } catch {
     return true;
   }
 }
 
 export function markControllerOnboarded() {
-  try {
-    localStorage.setItem(ONBOARDED_KEY, "true");
-  } catch {
-    /* ignore */
-  }
+  lsSetString(STORAGE_KEYS.controllerOnboarded, "true");
 }

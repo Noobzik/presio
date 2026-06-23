@@ -1,16 +1,22 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import { lsGet, lsSet, sessionKey } from "./storage"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function getSessionAuth(id: string) {
-  try {
-    return JSON.parse(localStorage.getItem(`session_${id}`) || "{}");
-  } catch {
-    return {};
-  }
+export interface SessionAuth {
+  controllerToken?: string;
+  passphrase?: string;
+}
+
+export function getSessionAuth(id: string): SessionAuth {
+  return lsGet<SessionAuth>(sessionKey(id), {});
+}
+
+export function setSessionAuth(id: string, auth: SessionAuth) {
+  lsSet(sessionKey(id), auth);
 }
 
 // Ends (deletes) a synced presentation. The server requires the controller

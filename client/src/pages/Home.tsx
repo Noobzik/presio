@@ -8,6 +8,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AccountControl } from "@/components/AccountControl";
 import { PresioLogo } from "@/components/PresioLogo";
 import { idbPut, idbList, idbDelete, idbPruneOlderThan } from "@/lib/localStore";
+import { lsRemove, sessionKey } from "@/lib/storage";
+import { getSessionAuth } from "@/lib/utils";
 import { loadExternalPdfMeta, createExternalSession } from "@/lib/externalSession";
 import { supabase } from "@/lib/supabaseClient";
 import "@/lib/pdf"; // ensure pdf.js worker is configured
@@ -53,11 +55,11 @@ export default function Home() {
           try {
             const res = await fetch(`/api/sessions/${id}`);
             if (!res.ok) {
-              localStorage.removeItem(key);
+              lsRemove(key);
               return null;
             }
             const session = await res.json();
-            const stored = JSON.parse(localStorage.getItem(key) || "{}");
+            const stored = getSessionAuth(id);
             return { id, filename: session.filename, hasToken: !!stored.controllerToken } as RecentSession;
           } catch {
             return null;
@@ -176,7 +178,7 @@ export default function Home() {
 
   const removeRecent = async (s: RecentSession) => {
     if (s.local) await idbDelete(s.id).catch(() => { /* ignore */ });
-    else localStorage.removeItem(`session_${s.id}`);
+    else lsRemove(sessionKey(s.id));
     setRecentSessions((prev) => prev.filter((r) => r.id !== s.id));
   };
 

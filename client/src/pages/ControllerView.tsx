@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from "react"
 import { Link } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { cn, getSessionAuth } from "@/lib/utils";
-import { Settings, Check, Option, Plus, Share2 } from "lucide-react";
+import { Settings, Check, Option, Plus, Share2, ExternalLink } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
@@ -343,7 +343,7 @@ export function ControllerView({
 
   const controllerUrl = `${window.location.origin}/s/${id}?role=controller`;
   const viewerUrl = `${window.location.origin}/s/${id}?role=viewer`;
-  const { passphrase } = getSessionAuth(id);
+  const { passphrase = "" } = getSessionAuth(id);
   const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
   // Open the viewer in its named window (reused across opens, so no duplicates)
@@ -458,11 +458,7 @@ export function ControllerView({
               : "text-foreground hover:bg-accent"
               }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 3h6v6" />
-              <path d="M10 14 21 3" />
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-            </svg>
+            <ExternalLink size={15} />
             Open Viewer
           </button>
         </div>

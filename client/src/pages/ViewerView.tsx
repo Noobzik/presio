@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSessionAuth } from "@/lib/utils";
+import { RotateCw, EllipsisVertical } from "lucide-react";
+import { getSessionAuth, setSessionAuth } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
 import { SessionQRCode } from "@/components/SessionQRCode";
@@ -114,10 +115,10 @@ export function ViewerView({
         throw new Error(body.error || "Authentication failed");
       }
       const data = await res.json();
-      localStorage.setItem(`session_${id}`, JSON.stringify({
+      setSessionAuth(id, {
         controllerToken: data.controllerToken,
         passphrase: data.passphrase,
-      }));
+      });
       navigate(`/s/${id}?role=controller`, { replace: true });
     } catch (e: unknown) {
       setAuthError(e instanceof Error ? e.message : "Authentication failed");
@@ -161,22 +162,7 @@ export function ViewerView({
             title="Out of sync — click to follow the presenter"
             className="flex items-center gap-1.5 rounded-full bg-amber-500/20 px-2 py-1 text-amber-300 hover:bg-amber-500/30 hover:text-amber-200 transition-colors cursor-pointer"
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
-              <path d="M21 3v5h-5" />
-              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
-              <path d="M3 21v-5h5" />
-            </svg>
+            <RotateCw size={14} />
             <span className="text-xs font-medium">Sync</span>
           </button>
         ) : (
@@ -208,21 +194,7 @@ export function ViewerView({
           cursorVisible ? "opacity-70 hover:opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="1" />
-          <circle cx="12" cy="5" r="1" />
-          <circle cx="12" cy="19" r="1" />
-        </svg>
+        <EllipsisVertical size={20} />
       </button>
 
       {menuOpen && (
