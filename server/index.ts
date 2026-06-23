@@ -2,7 +2,8 @@ import "dotenv/config";
 import http from "http";
 import { Server } from "socket.io";
 import { supabase } from "./supabase.js";
-import { createApp, getAllowedOrigins } from "./app.js";
+import { createApp } from "./app.js";
+import { getAllowedOrigins } from "./security.js";
 import { registerSocketHandlers, createSocketState } from "./socket.js";
 
 const allowedOrigins = getAllowedOrigins();

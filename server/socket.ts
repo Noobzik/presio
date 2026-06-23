@@ -1,4 +1,4 @@
-import type { Server } from "socket.io";
+import type { Server, Socket } from "socket.io";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sanitizeSettings, isValidSlideNumber } from "./validation.js";
 
@@ -19,6 +19,18 @@ export function registerSocketHandlers(
   state: SocketState
 ) {
   const { controllers, blankedSessions } = state;
+
+  // Wrap an event handler so it only runs for the session's registered
+  // controller, passing the resolved sessionId through. Mutating events
+  // (slide/settings/blank/media) all share this guard.
+  const controllerOnly = <A extends unknown[]>(
+    socket: Socket,
+    handler: (sessionId: string, ...args: A) => void
+  ) => (...args: A) => {
+    const { sessionId } = socket.data;
+    if (!sessionId || controllers.get(sessionId) !== socket.id) return;
+    handler(sessionId, ...args);
+  };
 
   io.on("connection", (socket) => {
     socket.on("join_session", async ({ sessionId, role, token }: { sessionId: string; role: string; token?: string }) => {
@@ -60,12 +72,7 @@ export function registerSocketHandlers(
       });
     });
 
-    socket.on("slide_change", async ({ slideNumber }: { slideNumber: number }) => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-
-      if (controllers.get(sessionId) !== socket.id) return;
-
+    socket.on("slide_change", controllerOnly(socket, async (sessionId, { slideNumber }: { slideNumber: number }) => {
       // Reject non-finite/out-of-range values rather than persisting garbage.
       if (!isValidSlideNumber(slideNumber, socket.data.totalSlides)) return;
 
@@ -75,20 +82,13 @@ export function registerSocketHandlers(
         .eq("id", sessionId);
 
       io.to(sessionId).emit("slide_update", { slideNumber });
-    });
+    }));
 
-    socket.on("sync_all", () => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
+    socket.on("sync_all", controllerOnly(socket, (sessionId) => {
       io.to(sessionId).emit("sync_all");
-    });
+    }));
 
-    socket.on("settings_change", async (settings: { timerMode?: string | null; timerDuration?: number | null; timerThreshold?: number | null; notePrefix?: string }) => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
-
+    socket.on("settings_change", controllerOnly(socket, async (sessionId, settings: { timerMode?: string | null; timerDuration?: number | null; timerThreshold?: number | null; notePrefix?: string }) => {
       const sanitized = sanitizeSettings(settings);
 
       await supabase
@@ -102,41 +102,28 @@ export function registerSocketHandlers(
         .eq("id", sessionId);
 
       io.to(sessionId).emit("settings_update", sanitized);
-    });
+    }));
 
-    socket.on("blank_toggle", () => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
-
+    socket.on("blank_toggle", controllerOnly(socket, (sessionId) => {
       if (blankedSessions.has(sessionId)) {
         blankedSessions.delete(sessionId);
       } else {
         blankedSessions.add(sessionId);
       }
       io.to(sessionId).emit("blank_update", { blanked: blankedSessions.has(sessionId) });
-    });
+    }));
 
-    socket.on("media_control", (payload: { id: string; action: "play" | "pause" | "reset" }) => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
+    socket.on("media_control", controllerOnly(socket, (sessionId, payload: { id: string; action: "play" | "pause" | "reset" }) => {
       io.to(sessionId).emit("media_update", { ...payload, seq: Date.now() });
-    });
+    }));
 
-    socket.on("audio_change", (payload: { muted: boolean; target: "controller" | "both" | "viewers" }) => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
+    socket.on("audio_change", controllerOnly(socket, (sessionId, payload: { muted: boolean; target: "controller" | "both" | "viewers" }) => {
       io.to(sessionId).emit("audio_update", { ...payload, seq: Date.now() });
-    });
+    }));
 
-    socket.on("media_time", (payload: { id: string; t: number; playing: boolean; sampledAt: number }) => {
-      const { sessionId } = socket.data;
-      if (!sessionId) return;
-      if (controllers.get(sessionId) !== socket.id) return;
+    socket.on("media_time", controllerOnly(socket, (sessionId, payload: { id: string; t: number; playing: boolean; sampledAt: number }) => {
       socket.to(sessionId).emit("media_time_update", { ...payload, seq: Date.now() });
-    });
+    }));
 
     socket.on("time_ping", (clientT1: number, ack?: (data: { serverTime: number; clientT1: number }) => void) => {
       if (typeof ack === "function") ack({ serverTime: Date.now(), clientT1 });
