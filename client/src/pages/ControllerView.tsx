@@ -690,7 +690,6 @@ export function ControllerView({
       {viewerPromptOpen && (
         <DialogOverlay onClose={() => setViewerPromptOpen(false)}>
           <div className="flex flex-col items-center gap-4 text-center">
-            {/* <h2 className="text-base font-semibold">Open the viewer</h2> */}
             <p className="text-xs text-muted-foreground">
               Hold <span className="font-medium text-foreground">{isMac ? "⌥ Option" : "Option/Alt"}</span> and click to open it in its own window.
               <br />
@@ -702,17 +701,6 @@ export function ControllerView({
                 {isMac ? <Option size={15} /> : "Option/Alt"}
               </kbd>
               <Plus size={14} className="text-muted-foreground" />
-              {/* A real link so a modifier-click opens it in its own window. */}
-              {/* <Button asChild>
-                <a
-                  href={viewerUrl}
-                  target={`presio-viewer-${id}`}
-                  rel="noopener"
-                  onClick={() => setViewerPromptOpen(false)}
-                >
-                  Open Viewer
-                </a>
-              </Button> */}
               <button
                 type="button"
                 onClick={openViewer}
