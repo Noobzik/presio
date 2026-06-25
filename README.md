@@ -2,6 +2,8 @@
 
 Upload a PDF presentation, get a short link, and control the slideshow from one browser window while viewers watch in another.
 
+![Demo](https://github.com/benedict-armstrong/presio/releases/download/demo/presio.gif)
+
 ![Demo](example/diagram.png)
 
 ## Prerequisites
