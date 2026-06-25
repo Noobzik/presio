@@ -159,6 +159,15 @@ export function ControllerView({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
       if (matchesBinding(e, keymap.firstSlide)) {
         e.preventDefault();
         onGoTo(1);
