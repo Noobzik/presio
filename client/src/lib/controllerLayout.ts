@@ -1,90 +1,145 @@
 // Controller dashboard card layout: configuration + persistence.
 //
-// The controller is a draggable/resizable grid of cards (current slide, next
-// slide, timer, notes, thumbnails). This module owns the card catalog, the
-// grid constants, and the localStorage load/merge/save logic so the view
+// The controller is a tiling window manager (react-mosaic) of cards: current
+// slide, next slide, timer, notes, thumbnails. Cards always tile to fill the
+// screen, so removing or resizing one makes its neighbours grow rather than
+// leaving a hole. The layout is a binary tree (`MosaicNode`); a card is visible
+// iff it appears as a leaf in that tree. This module owns the card catalog, the
+// default tree, and the localStorage load/sanitize/save logic so the view
 // component only deals with React state.
 
+import { getLeaves, createRemoveUpdate, updateTree } from "react-mosaic-component";
+import type { MosaicNode, MosaicParent, MosaicPath } from "react-mosaic-component";
 import { lsGet, lsSet, STORAGE_KEYS } from "./storage";
-
-export interface CardLayout {
-  i: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  minW?: number;
-  minH?: number;
-}
 
 interface CardConfig {
   key: string;
   label: string;
-  preferredLayout: CardLayout;
 }
 
-export const GRID_ROWS = 12;
-export const GRID_MARGIN = 12;
-
 const CARD_CONFIGS: CardConfig[] = [
-  { key: "currentSlide", label: "Current Slide", preferredLayout: { i: "currentSlide", x: 0, y: 0, w: 6, h: 8, minW: 4, minH: 3 } },
-  { key: "nextSlide", label: "Next Slide", preferredLayout: { i: "nextSlide", x: 6, y: 0, w: 4, h: 5, minW: 3, minH: 3 } },
-  { key: "timer", label: "Timer", preferredLayout: { i: "timer", x: 10, y: 0, w: 2, h: 5, minW: 2, minH: 2 } },
-  { key: "notes", label: "Speaker Notes", preferredLayout: { i: "notes", x: 6, y: 5, w: 6, h: 3, minW: 3, minH: 2 } },
-  { key: "thumbnails", label: "Thumbnails", preferredLayout: { i: "thumbnails", x: 0, y: 8, w: 12, h: 4, minW: 4, minH: 2 } },
+  { key: "currentSlide", label: "Current Slide" },
+  { key: "nextSlide", label: "Next Slide" },
+  { key: "timer", label: "Timer" },
+  { key: "notes", label: "Speaker Notes" },
+  { key: "thumbnails", label: "Thumbnails" },
 ];
 
 export const CARD_KEYS = CARD_CONFIGS.map((c) => c.key);
-export const CARD_LABELS = Object.fromEntries(CARD_CONFIGS.map((c) => [c.key, c.label]));
-export const PREFERRED_LAYOUTS: Record<string, CardLayout> =
-  Object.fromEntries(CARD_CONFIGS.map((c) => [c.key, c.preferredLayout])) as Record<string, CardLayout>;
-export const DEFAULT_LAYOUTS: CardLayout[] = CARD_CONFIGS.map((c) => c.preferredLayout);
+export const CARD_LABELS: Record<string, string> = Object.fromEntries(
+  CARD_CONFIGS.map((c) => [c.key, c.label]),
+);
 
-/** Project a saved layout onto the known cards, in canonical order, re-applying
- *  the (non-persisted) min size constraints from the preferred layout. Unknown
- *  or missing cards fall back to their preferred placement. */
-export function mergeLayout(saved: CardLayout[]): CardLayout[] {
-  return CARD_KEYS.map((key) => {
-    const s = saved.find((l) => l.i === key);
-    const pref = PREFERRED_LAYOUTS[key];
-    return s ? { ...s, minW: pref.minW, minH: pref.minH } : pref;
-  });
+/** Default arrangement, mirroring the previous grid: current slide on the left,
+ *  next slide + timer stacked over speaker notes on the right, thumbnails as a
+ *  full-width strip along the bottom. `splitPercentage` is the share given to
+ *  `first`. */
+export const DEFAULT_LAYOUT: MosaicNode<string> = {
+  direction: "column",
+  first: {
+    direction: "row",
+    first: "currentSlide",
+    second: {
+      direction: "column",
+      first: {
+        direction: "row",
+        first: "nextSlide",
+        second: "timer",
+        splitPercentage: 65,
+      },
+      second: "notes",
+      splitPercentage: 62,
+    },
+    splitPercentage: 52,
+  },
+  second: "thumbnails",
+  splitPercentage: 68,
+};
+
+function isParentNode(node: unknown): node is MosaicParent<string> {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    "direction" in node &&
+    "first" in node &&
+    "second" in node
+  );
 }
 
-export function defaultVisibility(): Record<string, boolean> {
-  return Object.fromEntries(CARD_KEYS.map((k) => [k, true]));
+/** Project an untrusted parsed value onto the known cards. Unknown leaves are
+ *  dropped, branches with a missing child collapse to the surviving child, and
+ *  anything unrecognisable (e.g. the legacy array format) yields null so the
+ *  caller can fall back to the default. */
+function sanitize(node: unknown): MosaicNode<string> | null {
+  if (typeof node === "string") return CARD_KEYS.includes(node) ? node : null;
+  if (isParentNode(node)) {
+    const first = sanitize(node.first);
+    const second = sanitize(node.second);
+    if (first && second) {
+      const direction = node.direction === "column" ? "column" : "row";
+      return { direction, first, second, splitPercentage: node.splitPercentage };
+    }
+    return first ?? second;
+  }
+  return null;
 }
 
-export function loadLayout(): CardLayout[] {
-  const saved = lsGet<CardLayout[] | null>(STORAGE_KEYS.controllerLayout, null);
-  return saved ? mergeLayout(saved) : DEFAULT_LAYOUTS;
+/** Keys currently shown as tiles, in the tree's canonical order. */
+export function visibleKeys(node: MosaicNode<string> | null): string[] {
+  return getLeaves(node).filter((k) => CARD_KEYS.includes(k));
 }
 
-export function loadVisibility(): Record<string, boolean> {
-  return lsGet<Record<string, boolean>>(STORAGE_KEYS.controllerCards, defaultVisibility());
+function findPath(
+  node: MosaicNode<string> | null,
+  key: string,
+  path: MosaicPath = [],
+): MosaicPath | null {
+  if (node == null) return null;
+  if (typeof node === "string") return node === key ? path : null;
+  return (
+    findPath(node.first, key, [...path, "first"]) ??
+    findPath(node.second, key, [...path, "second"])
+  );
 }
 
-export function saveLayout(layouts: CardLayout[]) {
-  lsSet(STORAGE_KEYS.controllerLayout, layouts);
+/** Add a card as a new full-height column on the right edge. No-op if already
+ *  present or the key is unknown. */
+export function addLeaf(node: MosaicNode<string> | null, key: string): MosaicNode<string> {
+  if (!CARD_KEYS.includes(key)) return node ?? key;
+  if (node == null) return key;
+  if (findPath(node, key)) return node;
+  return { direction: "row", first: node, second: key, splitPercentage: 75 };
 }
 
-export function saveVisibility(vis: Record<string, boolean>) {
-  lsSet(STORAGE_KEYS.controllerCards, vis);
+/** Remove a card from the tree; neighbours expand to fill the space. Returns
+ *  null if the removed card was the last one. */
+export function removeLeaf(
+  node: MosaicNode<string> | null,
+  key: string,
+): MosaicNode<string> | null {
+  const path = findPath(node, key);
+  if (node == null || path == null) return node;
+  if (path.length === 0) return null; // removing the sole remaining tile
+  return updateTree(node, [createRemoveUpdate(node, path)]);
 }
 
-export function savePreferred(layouts: CardLayout[], vis: Record<string, boolean>) {
-  lsSet(STORAGE_KEYS.preferredLayout, layouts);
-  lsSet(STORAGE_KEYS.preferredCards, vis);
+export function loadLayout(): MosaicNode<string> {
+  return sanitize(lsGet(STORAGE_KEYS.controllerMosaic, null)) ?? DEFAULT_LAYOUT;
+}
+
+export function saveLayout(node: MosaicNode<string> | null) {
+  lsSet(STORAGE_KEYS.controllerMosaic, node);
+}
+
+export function savePreferred(node: MosaicNode<string> | null) {
+  lsSet(STORAGE_KEYS.preferredMosaic, node);
 }
 
 export function hasPreferredLayout(): boolean {
-  return lsGet<CardLayout[] | null>(STORAGE_KEYS.preferredLayout, null) !== null;
+  return sanitize(lsGet(STORAGE_KEYS.preferredMosaic, null)) !== null;
 }
 
 /** Load the user's saved "preferred" layout, or null if none is stored. */
-export function loadPreferred(): { layouts: CardLayout[]; visibility: Record<string, boolean> } | null {
-  const savedLayout = lsGet<CardLayout[] | null>(STORAGE_KEYS.preferredLayout, null);
-  const savedCards = lsGet<Record<string, boolean> | null>(STORAGE_KEYS.preferredCards, null);
-  if (!savedLayout || !savedCards) return null;
-  return { layouts: mergeLayout(savedLayout), visibility: savedCards };
+export function loadPreferred(): MosaicNode<string> | null {
+  return sanitize(lsGet(STORAGE_KEYS.preferredMosaic, null));
 }

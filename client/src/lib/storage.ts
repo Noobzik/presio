@@ -10,10 +10,11 @@
  *  from an id, so they're kept as factory functions rather than constants. */
 export const STORAGE_KEYS = {
   keymap: "presio_keymap",
-  controllerLayout: "presio_controller_layout",
-  controllerCards: "presio_controller_cards",
-  preferredLayout: "presio_preferred_layout",
-  preferredCards: "presio_preferred_cards",
+  // Mosaic binary-tree layout for the controller dashboard. A card is "visible"
+  // iff it appears as a leaf in the tree, so visibility no longer needs its own
+  // key (replaces the legacy controllerLayout/controllerCards array format).
+  controllerMosaic: "presio_controller_mosaic",
+  preferredMosaic: "presio_preferred_mosaic",
   controllerOnboarded: "presio_controller_onboarded",
 } as const;
 

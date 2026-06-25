@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { cn, getSessionAuth } from "@/lib/utils";
-import { Settings, Check, Option, Plus, Share2, ExternalLink } from "lucide-react";
+import { Settings, Check, Option, Plus, Share2, ExternalLink, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DialogOverlay } from "@/components/ui/dialog-overlay";
@@ -17,7 +17,6 @@ import { ControllerOnboarding } from "@/components/ControllerOnboarding";
 import { hasCompletedControllerOnboarding } from "@/lib/onboarding";
 import { useAuth } from "@/lib/useAuth";
 import { useClaim } from "@/lib/useClaim";
-import { ControllerCard } from "@/components/controller/ControllerCard";
 import { CurrentSlideCard } from "@/components/controller/CurrentSlideCard";
 import { NextSlideCard } from "@/components/controller/NextSlideCard";
 import { SpeakerNotesCard } from "@/components/controller/SpeakerNotesCard";
@@ -35,31 +34,25 @@ import {
   type Keymap,
 } from "@/lib/keymap";
 import {
-  GRID_ROWS,
-  GRID_MARGIN,
   CARD_KEYS,
   CARD_LABELS,
-  PREFERRED_LAYOUTS,
-  DEFAULT_LAYOUTS,
-  defaultVisibility,
+  DEFAULT_LAYOUT,
   loadLayout,
-  loadVisibility,
   saveLayout,
-  saveVisibility,
   savePreferred,
   hasPreferredLayout,
   loadPreferred,
-  type CardLayout,
+  addLeaf,
+  removeLeaf,
+  visibleKeys,
 } from "@/lib/controllerLayout";
-import { ResponsiveGridLayout, useContainerWidth, getCompactor, type Layout, type ResponsiveLayouts } from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
+import { Mosaic, MosaicWindow, type MosaicNode } from "react-mosaic-component";
+import "react-mosaic-component/react-mosaic-component.css";
+import "./controllerMosaic.css";
 import type { PresentationSettings } from "./Presentation";
 import type { MediaState, AudioState } from "@/components/MediaOverlay";
 import type { MediaPlacement } from "@/lib/pdf";
 import { DownloadStrippedButton } from "@/components/DownloadStrippedButton";
-
-const verticalCompactor = getCompactor("vertical");
 
 // --- Component ---
 
@@ -142,27 +135,16 @@ export function ControllerView({
   // controller and avoids popup blockers.
   useEffect(() => {
     if (isMobile || onboardingOpen) return;
+    // One-time mount prompt (re-armed when onboarding finishes); the single
+    // extra render the rule warns about is intentional and harmless here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setViewerPromptOpen(true);
   }, [id, isMobile, onboardingOpen]);
 
-  const [layouts, setLayouts] = useState<CardLayout[]>(loadLayout);
-  const [cardVisibility, setCardVisibility] = useState<Record<string, boolean>>(loadVisibility);
+  const [mosaic, setMosaic] = useState<MosaicNode<string> | null>(loadLayout);
   const [hasPreferred, setHasPreferred] = useState(hasPreferredLayout);
-  const { containerRef: gridContainerRef, width: gridWidth } = useContainerWidth();
-  const heightRef = useRef<HTMLDivElement>(null);
-  const [containerHeight, setContainerHeight] = useState(0);
-
-  useEffect(() => {
-    const el = heightRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setContainerHeight(entry.contentRect.height));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const rowHeight = containerHeight > 0
-    ? (containerHeight - (GRID_ROWS + 1) * GRID_MARGIN) / GRID_ROWS
-    : 60;
+  // A card is shown iff it's a leaf in the tree; this drives the Settings checkboxes.
+  const visible = new Set(visibleKeys(mosaic));
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -186,48 +168,35 @@ export function ControllerView({
     return () => window.removeEventListener("keydown", handler);
   }, [currentSlide, totalSlides, onGoTo, onBlankToggle, keymap]);
 
-  const onLayoutChange = useCallback((layout: Layout, layouts: ResponsiveLayouts) => {
-    const source = layout.length
-      ? layout
-      : (layouts?.lg ?? layouts?.md ?? layouts?.sm ?? layout);
-    const arr: CardLayout[] = source.map((l) => ({ ...l })) as CardLayout[];
-    setLayouts(arr);
-    saveLayout(arr);
+  const onMosaicChange = useCallback((node: MosaicNode<string> | null) => {
+    setMosaic(node);
+    saveLayout(node);
   }, []);
 
   const resetLayout = useCallback(() => {
-    const vis = defaultVisibility();
-    setLayouts(DEFAULT_LAYOUTS.map((l) => ({ ...l })));
-    setCardVisibility(vis);
-    saveLayout(DEFAULT_LAYOUTS);
-    saveVisibility(vis);
+    setMosaic(DEFAULT_LAYOUT);
+    saveLayout(DEFAULT_LAYOUT);
   }, []);
 
   const savePreferredLayout = useCallback(() => {
-    savePreferred(layouts, cardVisibility);
+    savePreferred(mosaic);
     setHasPreferred(true);
-  }, [layouts, cardVisibility]);
+  }, [mosaic]);
 
   const restorePreferredLayout = useCallback(() => {
     const pref = loadPreferred();
     if (!pref) return;
-    setLayouts(pref.layouts);
-    setCardVisibility(pref.visibility);
-    saveLayout(pref.layouts);
-    saveVisibility(pref.visibility);
+    setMosaic(pref);
+    saveLayout(pref);
   }, []);
 
   const toggleCard = useCallback((key: string) => {
-    setCardVisibility((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      saveVisibility(next);
+    setMosaic((prev) => {
+      const next = visibleKeys(prev).includes(key)
+        ? removeLeaf(prev, key)
+        : addLeaf(prev, key);
+      saveLayout(next);
       return next;
-    });
-    // When toggling ON, reset to preferred size so it doesn't appear tiny
-    setLayouts((prev) => {
-      const pref = PREFERRED_LAYOUTS[key];
-      if (!pref) return prev;
-      return prev.map((l) => l.i === key ? { ...pref } : l);
     });
   }, []);
 
@@ -246,8 +215,6 @@ export function ControllerView({
     setViewerBlocked(!w);
     if (w) setViewerPromptOpen(false);
   };
-
-  const visibleLayouts = layouts.filter((l) => cardVisibility[l.i]);
 
   // Card content + optional action for each key
   const cardContent: Record<string, { content: ReactNode; action?: ReactNode }> = {
@@ -354,34 +321,43 @@ export function ControllerView({
         </div>
       </div>
 
-      <div
-        ref={(el) => {
-          // eslint-disable-next-line react-hooks/immutability
-          (gridContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-          (heightRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        }}
-        className="flex-1 min-h-0 overflow-hidden"
-      >
-        <ResponsiveGridLayout
-          className="layout"
-          width={gridWidth}
-          layouts={{ lg: visibleLayouts }}
-          breakpoints={{ lg: 0 }}
-          cols={{ lg: 12 }}
-          rowHeight={rowHeight}
-          maxRows={GRID_ROWS}
-          onLayoutChange={onLayoutChange}
-          compactor={verticalCompactor}
-          margin={[GRID_MARGIN, GRID_MARGIN]}
-        >
-          {CARD_KEYS.filter((key) => cardVisibility[key]).map((key) => (
-            <div key={key}>
-              <ControllerCard title={CARD_LABELS[key]} action={cardContent[key].action}>
-                {cardContent[key].content}
-              </ControllerCard>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Mosaic<string>
+          className="controller-mosaic"
+          value={mosaic}
+          onChange={onMosaicChange}
+          renderTile={(key, path) => (
+            <MosaicWindow<string>
+              path={path}
+              title={CARD_LABELS[key]}
+              renderToolbar={() => (
+                <div className="flex items-center justify-between w-full px-3 py-1.5 cursor-move select-none">
+                  <span className="text-xs text-muted-foreground font-semibold">{CARD_LABELS[key]}</span>
+                  <div className="flex items-center gap-1">
+                    {cardContent[key].action}
+                    <button
+                      type="button"
+                      onClick={() => toggleCard(key)}
+                      title="Hide card"
+                      className="inline-flex items-center justify-center h-5 w-5 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            >
+              <div className="h-full flex flex-col p-3 pt-1">
+                <div className="flex-1 min-h-0">{cardContent[key].content}</div>
+              </div>
+            </MosaicWindow>
+          )}
+          zeroStateView={
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              All cards hidden — enable them in Settings.
             </div>
-          ))}
-        </ResponsiveGridLayout>
+          }
+        />
       </div>
 
       <div className="border-t p-4 flex items-center justify-center gap-4 shrink-0">
@@ -479,9 +455,9 @@ export function ControllerView({
                   onClick={() => toggleCard(key)}
                   className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent transition-colors text-left"
                 >
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${cardVisibility[key] ? "bg-primary border-primary text-primary-foreground" : "border-input"
+                  <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${visible.has(key) ? "bg-primary border-primary text-primary-foreground" : "border-input"
                     }`}>
-                    {cardVisibility[key] && <Check size={11} strokeWidth={3} />}
+                    {visible.has(key) && <Check size={11} strokeWidth={3} />}
                   </span>
                   {CARD_LABELS[key]}
                 </button>

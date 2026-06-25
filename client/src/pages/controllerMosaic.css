@@ -1,0 +1,69 @@
+/* Theme-aware overrides for react-mosaic on the controller dashboard.
+ *
+ * The library ships a Blueprint theme we don't use; the base stylesheet only
+ * provides structural (positioning) rules plus white backgrounds and hard
+ * shadows. Everything here re-skins the tiles, toolbars and resize handles with
+ * the app's CSS variables so they match light/dark mode. All rules are scoped
+ * under `.controller-mosaic` (the className passed to <Mosaic>). */
+
+.controller-mosaic.mosaic {
+  background: transparent;
+}
+
+.controller-mosaic .mosaic-root {
+  top: 6px;
+  right: 6px;
+  bottom: 6px;
+  left: 6px;
+}
+
+/* Tile chrome */
+.controller-mosaic .mosaic-window {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--background);
+  box-shadow: none;
+}
+
+/* The drag-ghost placeholder is absolutely positioned behind the tile and is
+ * only meant to show through an opaque toolbar/body. Our toolbar and body are
+ * transparent (so the tile's own background shows), which let the preview's
+ * default white title bleed through as a duplicate. We can't `display: none` it:
+ * react-dnd hands this node to `setDragImage()` at dragstart, and a node that
+ * isn't laid out throws there and aborts the drag. Keep it rendered but fully
+ * transparent — no bleed, drag image wiring intact. */
+.controller-mosaic .mosaic-window > .mosaic-preview {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Toolbar = our custom header + drag handle (see renderToolbar) */
+.controller-mosaic .mosaic-window-toolbar {
+  height: auto;
+  min-height: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.controller-mosaic .mosaic-window-body {
+  background: transparent;
+}
+
+/* Resize handles: invisible at rest, a tinted bar on hover/drag */
+.controller-mosaic .mosaic-split {
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.controller-mosaic .mosaic-split:hover {
+  background: color-mix(in oklch, var(--primary) 35%, transparent);
+}
+
+/* Drag-and-drop drop zones */
+.controller-mosaic .drop-target {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+}
+
+.controller-mosaic .drop-target.drop-target-hover {
+  background: color-mix(in oklch, var(--primary) 28%, transparent);
+}

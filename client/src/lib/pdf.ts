@@ -4,7 +4,22 @@ import { typstAstToMarkdown } from "./typstNotes";
 
 GlobalWorkerOptions.workerSrc = pdfWorker;
 
+// Cached *source* canvases, keyed by page+scale. These are never mounted in the
+// DOM: each renderPage() call returns a fresh copy (see below). A canvas is a
+// DOM node that can only live in one place, so handing the same cached element
+// to multiple consumers (thumbnails, next-slide preview, the main view) made
+// appending it in one spot yank it out of another — e.g. clicking a thumbnail
+// whose scale collided with the main view turned the thumbnail black.
 const pageCache = new Map<string, HTMLCanvasElement>();
+
+/** Blit a cached source canvas into a new, independently-mountable canvas. */
+function copyCanvas(source: HTMLCanvasElement): HTMLCanvasElement {
+  const out = document.createElement("canvas");
+  out.width = source.width;
+  out.height = source.height;
+  out.getContext("2d")!.drawImage(source, 0, 0);
+  return out;
+}
 
 export async function loadPdf(url: string): Promise<PDFDocumentProxy> {
   return getDocument(url).promise;
@@ -44,7 +59,8 @@ export async function renderPage(
   scale = Math.max(0.25, Math.round(scale * 4) / 4);
 
   const key = `${pageNum}-${scale}`;
-  if (pageCache.has(key)) return pageCache.get(key)!;
+  const cached = pageCache.get(key);
+  if (cached) return copyCanvas(cached);
 
   const viewport = page.getViewport({ scale });
   const canvas = document.createElement("canvas");
@@ -58,7 +74,7 @@ export async function renderPage(
   }).promise;
 
   pageCache.set(key, canvas);
-  return canvas;
+  return copyCanvas(canvas);
 }
 
 let notesCache: Map<number, string> | null = null;
