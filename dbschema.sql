@@ -14,6 +14,10 @@ create table if not exists sessions (
   note_prefix text not null default 'note:',
   local boolean not null default false,
   user_id uuid references auth.users,
+  -- Lifecycle: 'active' while the presentation is live; 'expired' once it has
+  -- ended (either explicitly by the controller or after expires_at passed).
+  -- Expired rows are retained as a record rather than deleted.
+  status text not null default 'active',
   created_at timestamptz not null default now(),
   expires_at timestamptz not null default (now() + interval '24 hours')
 );
@@ -27,6 +31,7 @@ alter table sessions add column if not exists user_id uuid references auth.users
 -- to the bucket. Mode is derivable: local=true ⇒ local; pdf_url <> '' ⇒
 -- external; pdf_path <> '' ⇒ Supabase-hosted.
 alter table sessions add column if not exists pdf_url text not null default '';
+alter table sessions add column if not exists status text not null default 'active';
 
 -- Index for cleanup query
 create index if not exists idx_sessions_expires_at on sessions (expires_at);

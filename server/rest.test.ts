@@ -50,6 +50,12 @@ describe("GET /api/sessions/:id", () => {
     const res = await request(app).get("/api/sessions/NOPE");
     expect(res.status).toBe(404);
   });
+
+  it("404s for an expired session", async () => {
+    const app = appWith(new FakeSupabase([baseRow({ status: "expired" })]));
+    const res = await request(app).get("/api/sessions/ABC123");
+    expect(res.status).toBe(404);
+  });
 });
 
 describe("DELETE /api/sessions/:id (controller-token auth)", () => {
@@ -69,14 +75,16 @@ describe("DELETE /api/sessions/:id (controller-token auth)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("deletes when the token matches", async () => {
+  it("marks the session expired (not deleted) when the token matches", async () => {
     const fake = new FakeSupabase([baseRow({})]);
     const app = appWith(fake);
     const res = await request(app)
       .delete("/api/sessions/ABC123")
       .set("x-controller-token", "secret-token");
     expect(res.status).toBe(200);
-    expect(fake.rows).toHaveLength(0);
+    // The row is retained, just marked expired.
+    expect(fake.rows).toHaveLength(1);
+    expect(fake.rows[0].status).toBe("expired");
   });
 });
 

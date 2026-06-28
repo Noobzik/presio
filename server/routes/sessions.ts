@@ -16,8 +16,8 @@ const generateSessionId = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
 const generatePassphrase = customAlphabet("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 8);
 
 // How many synced presentations a single user may have live at once. Sessions
-// expire after 24h (and are deleted on end), so this caps concurrent — not
-// lifetime — presentations.
+// expire after 24h (and are marked 'expired' on end), so this caps concurrent —
+// not lifetime — presentations.
 export const MAX_CONCURRENT_PRESENTATIONS = 3;
 
 export function registerSessionRoutes(app: express.Express, { supabase, io }: RouteDeps) {
@@ -121,7 +121,8 @@ export function registerSessionRoutes(app: express.Express, { supabase, io }: Ro
       }
 
       // Cap how many synced presentations a user can have live at once. Only count
-      // non-expired ones; expired sessions are pending cleanup and don't count.
+      // ones that are still active and not past expiry; sessions marked 'expired'
+      // (ended early or aged out) don't count.
       // Exclude the session being claimed so a re-claim of the same code is a no-op.
       const { count, error: countError } = await supabase
         .from("sessions")
@@ -129,6 +130,7 @@ export function registerSessionRoutes(app: express.Express, { supabase, io }: Ro
         .eq("user_id", userData.user.id)
         .eq("local", false)
         .neq("id", req.params.id)
+        .neq("status", "expired")
         .gt("expires_at", new Date().toISOString());
       if (countError) {
         res.status(500).json({ error: "Failed to check presentation limit" });
@@ -261,6 +263,7 @@ export function registerSessionRoutes(app: express.Express, { supabase, io }: Ro
       .from("sessions")
       .select("id, pdf_path, pdf_url, filename, total_slides, current_slide, timer_mode, timer_duration, timer_threshold, note_prefix, local")
       .eq("id", req.params.id)
+      .neq("status", "expired")
       .single();
 
     if (error || !data) {
@@ -303,6 +306,7 @@ export function registerSessionRoutes(app: express.Express, { supabase, io }: Ro
       .from("sessions")
       .select("controller_token, passphrase")
       .eq("id", req.params.id)
+      .neq("status", "expired")
       .single();
 
     if (error || !data) {
@@ -340,7 +344,8 @@ export function registerSessionRoutes(app: express.Express, { supabase, io }: Ro
     if (data.pdf_path) {
       await supabase.storage.from("presentations").remove([data.pdf_path]);
     }
-    await supabase.from("sessions").delete().eq("id", data.id);
+    // Mark the session expired rather than deleting it — the row is retained.
+    await supabase.from("sessions").update({ status: "expired" }).eq("id", data.id);
 
     // Disconnect all sockets in this session's room
     const sockets = await io.in(data.id).fetchSockets();

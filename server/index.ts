@@ -19,9 +19,12 @@ registerSocketHandlers(io, supabase, createSocketState());
 // --- Cleanup expired sessions (every hour) ---
 
 async function cleanupExpired() {
+  // Only pick up sessions that are still active but past their expiry; rows
+  // already marked 'expired' have been handled, so skip them.
   const { data: expired } = await supabase
     .from("sessions")
     .select("id, pdf_path")
+    .neq("status", "expired")
     .lt("expires_at", new Date().toISOString());
 
   if (!expired?.length) return;
@@ -29,10 +32,11 @@ async function cleanupExpired() {
   const paths = expired.map((s) => s.pdf_path).filter(Boolean);
   if (paths.length) await supabase.storage.from("presentations").remove(paths);
 
+  // Mark as expired rather than deleting — the row is retained as a record.
   const ids = expired.map((s) => s.id);
-  await supabase.from("sessions").delete().in("id", ids);
+  await supabase.from("sessions").update({ status: "expired" }).in("id", ids);
 
-  console.log(`Cleaned up ${expired.length} expired session(s)`);
+  console.log(`Expired ${expired.length} session(s)`);
 }
 
 // Run once at startup (the interval otherwise waits a full hour first), then

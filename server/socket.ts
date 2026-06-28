@@ -38,6 +38,7 @@ export function registerSocketHandlers(
         .from("sessions")
         .select("current_slide, total_slides, controller_token, timer_mode, timer_duration, timer_threshold, note_prefix")
         .eq("id", sessionId)
+        .neq("status", "expired")
         .single();
 
       if (!data) {
